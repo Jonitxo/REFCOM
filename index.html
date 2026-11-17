@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Referencias por modelo</title>
+<meta name="robots" content="noindex">
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--tx:#1b2430;--mut:#6b7686;--bd:#e1e6ed;--pri:#1f6feb;--pri-d:#1858bd;--ok:#1a9d5b;--warn:#d98a00;--bad:#d1343f;--r:12px;--sh:0 1px 3px rgba(20,30,50,.08),0 4px 12px rgba(20,30,50,.05)}
+@media (prefers-color-scheme:dark){:root{--bg:#10151c;--card:#19212b;--tx:#e8edf3;--mut:#93a0b1;--bd:#2a3542;--sh:0 1px 3px rgba(0,0,0,.4)}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx)}
+header{position:sticky;top:0;z-index:20;background:var(--card);border-bottom:1px solid var(--bd);box-shadow:var(--sh)}
+.bar{max-width:1500px;margin:auto;padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+h1{font-size:19px;margin:0;font-weight:700}
+.sp{flex:1}
+input,select,textarea{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:9px 11px;width:100%}
+input[type=checkbox]{width:auto}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);outline-offset:-1px}
+.search{max-width:360px}
+button{font:inherit;cursor:pointer;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:8px 14px;font-weight:600}
+button:hover{border-color:var(--pri)}
+button.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+button.pri:hover{background:var(--pri-d)}
+button.bad{color:var(--bad)}
+button.sm{padding:3px 9px;font-size:13px}
+button.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.layout{max-width:1500px;margin:auto;padding:16px;display:grid;grid-template-columns:270px minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:860px){.layout{grid-template-columns:1fr}}
+aside{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:10px;position:sticky;top:76px;max-height:calc(100vh - 92px);overflow:auto}
+@media(max-width:860px){aside{position:static;max-height:300px}}
+.sg{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);padding:12px 8px 4px}
+.it{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer}
+.it:hover{background:var(--bg)}
+.it.on{background:var(--pri);color:#fff}
+.it.on .n{color:#fff;opacity:.85}
+.it i{width:10px;height:10px;border-radius:3px;background:var(--c);flex:none}
+.it .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it .n{font-size:12px;color:var(--mut)}
+.it.fam{font-weight:700;margin-top:6px}
+.it.ser{margin-left:12px;font-weight:600}
+.it.sub{margin-left:28px;font-size:14px}
+.ed{display:none;font-size:12px;opacity:.7;padding:0 4px}
+body.auth .ed{display:inline}
+.sbtn{display:none;gap:6px;margin-top:10px;flex-wrap:wrap}
+body.auth .sbtn{display:flex}
+.sbtn button{flex:1;padding:6px 8px;font-size:13px;white-space:nowrap}
+main{min-width:0}
+.mh{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:16px 18px;margin-bottom:14px;border-top:5px solid var(--c,var(--pri))}
+.mh h2{margin:0 0 4px;font-size:21px}
+.sub2{color:var(--mut);font-size:13px}
+.tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.tools select{width:auto}
+.tools label{font-size:13px;display:flex;gap:5px;align-items:center;color:var(--mut)}
+.st{display:flex;gap:18px;margin-top:10px;flex-wrap:wrap}
+.st b{font-size:20px;display:block;line-height:1.1}
+.st span{font-size:12px;color:var(--mut)}
+.sec{margin-bottom:20px}
+.sec h3{font-size:14px;margin:0 0 8px;display:flex;gap:8px;align-items:center}
+.sec h3 small{color:var(--mut);font-weight:500}
+.tw{overflow-x:auto;border-radius:var(--r);box-shadow:var(--sh);background:var(--card)}
+table{width:100%;border-collapse:collapse;background:var(--card)}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--bd);font-size:14px;vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{background:var(--bg);color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+td.ty{white-space:nowrap;color:var(--mut);font-size:13px}
+.note{font-size:12px;color:var(--mut)}
+/* referencias */
+.refc{font-family:ui-monospace,Menlo,Consolas,monospace;cursor:pointer;white-space:nowrap;border-radius:4px;padding:0 2px}
+.refc:hover{background:rgba(31,111,235,.15)}
+.refc .rp{opacity:.55;font-weight:500}
+.refc .rs{font-weight:800;letter-spacing:.3px}
+.refc.big{font-size:20px}
+.refc.sel{outline:2px solid var(--pri)}
+.refc.plain{font-weight:700}
+/* colores tóner */
+.ch-K{background:#2b2f36!important;color:#fff!important}
+.ch-C{background:#5ec4f5!important;color:#06283a!important}
+.ch-M{background:#ff6ad5!important;color:#3b0030!important}
+.ch-Y{background:#ffef4a!important;color:#3a3300!important}
+th.ch-K,th.ch-C,th.ch-M,th.ch-Y{letter-spacing:.4px}
+.ft.ch-K,.ft.ch-C,.ft.ch-M,.ft.ch-Y{border-radius:6px;padding:2px 8px;display:inline-block}
+.mc{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;margin:1px 3px 1px 0;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--tx);border:1px solid color-mix(in srgb,var(--c) 55%,transparent);white-space:nowrap;cursor:pointer}
+.mc.g{border-style:dashed}
+.u{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;margin-left:6px}
+.u.o{background:var(--bd);color:var(--mut)}
+.u.w{background:var(--warn);color:#fff}
+.u.c{background:var(--pri);color:#fff}
+.empty{text-align:center;color:var(--mut);padding:36px 10px;background:var(--card);border-radius:var(--r);box-shadow:var(--sh)}
+/* matriz */
+.mtx{border-collapse:separate;border-spacing:0;width:auto;min-width:100%}
+.mtx th,.mtx td{border-right:1px solid var(--bd);border-bottom:1px solid var(--bd);padding:6px 10px;text-align:center;white-space:nowrap;font-size:13px;vertical-align:middle}
+.mtx thead th{text-align:center}
+.mtx thead .sysh{background:var(--tx);color:var(--bg);font-size:11px}
+.mtx .stk{position:sticky;left:0;z-index:2;background:var(--card);text-align:left;cursor:pointer;min-width:120px}
+.mtx thead .stk{background:var(--bg);z-index:3}
+.mtx td.nm{text-align:left;font-size:12px;color:var(--mut)}
+.mtx tr.hl>td.stk,.mtx tr.hl>td.nm{background:color-mix(in srgb,var(--pri) 22%,var(--card))}
+.mtx td.hit{outline:2px solid var(--pri);outline-offset:-2px}
+.mtx td.emp{background:transparent}
+.add{border-style:dashed;color:var(--mut);padding:0 8px;font-size:13px;display:none}
+body.auth .add{display:inline-block}
+.legend{font-size:12px;color:var(--mut);margin:8px 2px 0}
+.strip{margin-top:10px;background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:12px 14px}
+.strip h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)}
+.sgrid{display:flex;gap:10px;flex-wrap:wrap}
+.sitem{border:1px solid var(--bd);border-radius:10px;padding:6px 12px;min-width:150px}
+.sitem .l{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px}
+.sitem .v{font-size:15px}
+.sblock{margin-bottom:26px}
+.sblock>h3{font-size:16px;margin:0 0 8px;cursor:pointer;display:flex;gap:8px;align-items:center}
+.sblock>h3 small{color:var(--mut);font-weight:500}
+/* ficha */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.fcard{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:12px 14px}
+.fcard h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut)}
+.fr{display:grid;grid-template-columns:110px 1fr;gap:2px 10px;padding:8px 0;border-top:1px solid var(--bd);align-items:center}
+.fr:first-of-type{border-top:0}
+.fr .ft{font-size:13px;font-weight:600}
+.fr .fn{grid-column:2;font-size:12px;color:var(--mut)}
+.fr .fs{grid-column:2}
+.nomen{display:flex;gap:26px;flex-wrap:wrap;margin-top:6px}
+.nomen div b{display:block;font-size:22px;line-height:1.15}
+.nomen div span{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)}
+/* info */
+#info{position:sticky;top:70px;z-index:15;background:var(--card);border:2px solid var(--pri);border-radius:var(--r);box-shadow:var(--sh);padding:10px 14px;margin-bottom:12px;display:none}
+#info.on{display:block}
+#info .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+/* home */
+.fams{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.famc{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:14px 16px;cursor:pointer;border-left:5px solid var(--c)}
+.famc h3{margin:0 0 6px}
+.famc div{font-size:13px;color:var(--mut)}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
+.steps div{background:var(--bg);border-radius:10px;padding:12px;text-align:left}
+.steps b{display:block;margin-bottom:4px}
+/* modales */
+.modal{position:fixed;inset:0;background:rgba(10,15,25,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal.open{display:flex}
+.box{background:var(--card);border-radius:14px;padding:22px;width:100%;max-width:500px;max-height:92vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.box.wide{max-width:900px}
+.box h2{margin:0 0 14px;font-size:18px}
+.f{margin-bottom:12px}
+.f label.l{display:block;font-size:12px;color:var(--mut);margin-bottom:4px;font-weight:600}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pick{border:1px solid var(--bd);border-radius:8px;padding:8px 10px;max-height:200px;overflow:auto;background:var(--bg)}
+.pick label{display:flex;gap:8px;align-items:center;padding:3px 0;cursor:pointer}
+.pick .ph{font-size:11px;text-transform:uppercase;color:var(--mut);margin:6px 0 2px}
+.pf{margin-bottom:6px;padding:6px 9px}
+.chk{display:flex;gap:8px;align-items:center;font-size:14px;margin:4px 0}
+.sw{display:flex;gap:6px;flex-wrap:wrap}
+.sw label{width:28px;height:28px;border-radius:8px;background:var(--c);cursor:pointer;display:flex;align-items:center;justify-content:center;border:2px solid transparent}
+.sw input{display:none}
+.sw input:checked+span{width:100%;height:100%;border-radius:6px;border:3px solid var(--card);outline:2px solid var(--tx)}
+.sw span{display:block}
+.end{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.err{color:var(--bad);font-size:13px;min-height:18px}
+.hint{font-size:12px;color:var(--mut);margin:4px 0 0}
+#tyT input,#tyT select{padding:6px 8px}
+#tyT td{padding:4px 6px}
+.edit-only{display:none}
+body.auth .edit-only{display:inline-block}
+body.auth .view-only{display:none}
+.pub{background:var(--ok)!important;border-color:var(--ok)!important;color:#fff!important}
+#dirty{display:none;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--warn);color:#fff}
+.banner{background:var(--card);border:2px solid var(--warn);border-radius:var(--r);padding:12px 16px;margin-bottom:12px;font-size:14px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 18px;border-radius:8px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:99}
+.toast.on{opacity:1}
+@media print{header,aside,.tools,.sbtn,.legend,button,#info{display:none!important}.layout{display:block;padding:0}.tw{box-shadow:none;overflow:visible}body{background:#fff;color:#000}}
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <h1>Referencias por modelo</h1>
+  <input id="q" class="search" type="search" placeholder="Buscar referencia, modelo, código o tipo">
+  <div class="sp"></div>
+  <span id="dirty">Cambios sin publicar</span>
+  <button id="btnPub" class="pub edit-only">Publicar</button>
+  <button id="btnPart" class="pri edit-only">+ Pieza</button>
+  <button id="btnBulk" class="edit-only">+ Varias</button>
+  <button id="btnCfg" class="edit-only">Ajustes</button>
+  <button id="btnOut" class="edit-only">Cerrar sesión</button>
+  <button id="btnIn" class="view-only">Acceso editor</button>
+</div></header>
+
+<div class="layout">
+  <aside>
+    <div id="side"></div>
+    <div class="sbtn"><button id="btnModel">+ Modelo</button><button id="btnGroup">+ Serie / grupo</button></div>
+  </aside>
+  <main><div id="info"></div><div id="main"></div></main>
+</div>
+
+<!-- Login -->
+<div class="modal" id="mLogin"><form class="box" id="fLogin">
+  <h2>Acceso editor</h2>
+  <p class="hint">La edición se controla con GitHub: solo puede publicar quien tenga un token con permiso de escritura en el repositorio. Instrucciones en el README.</p>
+  <div class="f" style="margin-top:12px"><label class="l">Repositorio (usuario/repositorio)</label><input id="lRepo" placeholder="usuario/referencias-piezas" autocomplete="off"></div>
+  <div class="f"><label class="l">Token de acceso personal</label><input id="lTok" type="password" autocomplete="off" placeholder="github_pat_..."></div>
+  <label class="chk"><input type="checkbox" id="lRem"> Recordar en este navegador</label>
+  <div class="err" id="lErr"></div>
+  <div class="end"><button type="button" id="lLocal" style="margin-right:auto;display:none">Modo local</button><button type="button" data-close>Cancelar</button><button class="pri" type="submit" id="lGo">Entrar</button></div>
+</form></div>
+
+<!-- Modelo -->
+<div class="modal" id="mModel"><form class="box" id="fModel">
+  <h2 id="mmTitle">Nuevo modelo</h2>
+  <div class="f"><label class="l">Nombre comercial</label><input id="mmName" required placeholder="Ej: IM C2010"></div>
+  <div class="f2">
+    <div class="f"><label class="l">Códigos (separados por coma)</label><input id="mmCodes" placeholder="D0DY, D0CB"></div>
+    <div class="f"><label class="l">Plataforma</label><input id="mmPlat" placeholder="Metis-MF4y"></div>
+  </div>
+  <div class="f2">
+    <div class="f"><label class="l">Serie</label><select id="mmSerie"></select></div>
+    <div class="f"><label class="l">Franja</label><select id="mmFr"></select></div>
+  </div>
+  <div class="f"><label class="l">Grupos libres</label><div class="pick" id="mmGroups"></div></div>
+  <div class="end"><button type="button" class="bad" id="mmDel" style="margin-right:auto">Borrar</button><button type="button" data-close>Cancelar</button><button class="pri" type="submit">Guardar</button></div>
+</form></div>
+
+<!-- Serie / franja / grupo -->
+<div class="modal" id="mGroup"><form class="box" id="fGroup">
+  <h2 id="ggTitle">Nueva serie / grupo</h2>
+  <div class="f2">
+    <div class="f"><label class="l">Nombre</label><input id="ggName" required placeholder="Ej: Metis MF4"></div>
+    <div class="f"><label class="l">Tipo</label><select id="ggKind"><option value="serie">Serie (generación)</option><option value="franja">Franja de una serie</option><option value="grupo">Grupo libre</option></select></div>
+  </div>
+  <div class="f" id="ggFamW"><label class="l">Familia</label><input id="ggFam" list="dlFam" placeholder="Ej: Metis"></div>
+  <div class="f" id="ggParW"><label class="l">Serie a la que pertenece</label><select id="ggPar"></select></div>
+  <div class="f" id="ggColW"><label class="l">Color de la franja</label><div class="sw" id="ggCol"></div></div>
+  <div class="f"><label class="l">Modelos</label><input class="pf" placeholder="Filtrar"><div class="pick" id="ggModels"></div></div>
+  <p class="hint">Una pieza asignada a una serie, franja o grupo se aplica a todos sus modelos, incluidos los que se añadan después.</p>
+  <div class="end"><button type="button" class="bad" id="ggDel" style="margin-right:auto">Borrar</button><button type="button" data-close>Cancelar</button><button class="pri" type="submit">Guardar</button></div>
+</form></div>
+
+<!-- Pieza -->
+<div class="modal" id="mPart"><form class="box" id="fPart">
+  <h2 id="pTitle">Nueva pieza</h2>
+  <div class="f2">
+    <div class="f"><label class="l">Referencia</label><input id="pRef" required></div>
+    <div class="f"><label class="l">Tipo de pieza</label><input id="pType" list="dlType" placeholder="Revelador M, Fusor…"></div>
+  </div>
+  <div class="f"><label class="l">Descripción</label><input id="pName"></div>
+  <div class="f2">
+    <div class="f"><label class="l">Notas</label><input id="pNote"></div>
+    <div class="f"><label class="l">Uso</label><select id="pHab"><option value="1">Habitual</option><option value="0">Poco habitual</option></select></div>
+  </div>
+  <label class="chk"><input type="checkbox" id="pChk"> Por verificar</label>
+  <label class="chk"><input type="checkbox" id="pGen"> Pieza general (consumible, sin modelo)</label>
+  <div class="f" id="pPickW"><label class="l">Aplica a</label><input class="pf" placeholder="Filtrar series, franjas o modelos"><div class="pick" id="pPick"></div></div>
+  <div class="end"><button type="button" class="bad" id="pDel" style="margin-right:auto">Borrar</button><button type="button" data-close>Cancelar</button><button class="pri" type="submit">Guardar</button></div>
+</form></div>
+
+<!-- Varias -->
+<div class="modal" id="mBulk"><form class="box" id="fBulk">
+  <h2>Añadir varias piezas</h2>
+  <div class="f"><label class="l">Una por línea: REFERENCIA ; descripción ; tipo</label>
+    <textarea id="bTxt" rows="7" placeholder="REFERENCIA ; descripción ; tipo"></textarea></div>
+  <div class="f2">
+    <div class="f"><label class="l">Tipo por defecto</label><input id="bType" list="dlType"></div>
+    <div class="f"><label class="l">Uso</label><select id="bHab"><option value="1">Habitual</option><option value="0">Poco habitual</option></select></div>
+  </div>
+  <div class="f"><label class="l">Aplica a</label><input class="pf" placeholder="Filtrar"><div class="pick" id="bPick"></div></div>
+  <p class="hint">Si una referencia ya existe, se le añaden los modelos seleccionados.</p>
+  <div class="end"><button type="button" data-close>Cancelar</button><button class="pri" type="submit">Añadir</button></div>
+</form></div>
+
+<!-- Tipos de pieza -->
+<div class="modal" id="mTypes"><form class="box wide" id="fTypes">
+  <h2>Tipos de pieza</h2>
+  <p class="hint">Define las columnas de las matrices. El orden de esta lista es el orden de las columnas; los tipos con el mismo sistema se agrupan bajo una cabecera común. "Color" asigna K, C, M o Y (unidades reveladoras). "Común de serie" coloca la pieza en el bloque "Común a toda la serie". "Alias" reparte un tipo en varias columnas (PCU K+COL → PCU K, PCU COL).</p>
+  <div class="tw" style="box-shadow:none;border:1px solid var(--bd)"><table id="tyT"><thead><tr><th>Tipo</th><th>Sistema</th><th>Color</th><th>Común de serie</th><th>Alias (coma)</th><th></th></tr></thead><tbody id="tyRows"></tbody></table></div>
+  <div class="end"><button type="button" id="tyAdd" style="margin-right:auto">+ Tipo</button><button type="button" data-close>Cancelar</button><button class="pri" type="submit">Guardar</button></div>
+</form></div>
+
+<!-- Ajustes -->
+<div class="modal" id="mCfg"><div class="box">
+  <h2>Ajustes</h2>
+  <div class="f"><label class="l">Estructura</label>
+    <button id="bTypes">Tipos de pieza…</button></div>
+  <div class="f"><label class="l">Datos</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button id="bExp">Exportar JSON</button><button id="bCsv">Exportar CSV</button><button id="bImp">Importar JSON</button><button id="bDiscard">Descartar cambios sin publicar</button><button id="bReset" class="bad">Vaciar inventario</button>
+      <input type="file" id="fImp" accept="application/json" hidden>
+    </div>
+    <p class="hint">Los datos publicados viven en data.json del repositorio de GitHub. Exportar crea una copia de seguridad.</p></div>
+  <div class="end"><button data-close>Cerrar</button></div>
+</div></div>
+
+<datalist id="dlType"></datalist><datalist id="dlFam"></datalist><datalist id="dlSys"></datalist>
+<div class="toast" id="toast"></div>
+
+<script>
+const K={draft:'ref_piezas_draft_v5',tok:'ref_piezas_token',repo:'ref_piezas_repo',legacy:'ref_modelos_v4'};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>(crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()));
+const cmp=(a,b)=>String(a).localeCompare(String(b),'es',{numeric:true,sensitivity:'base'});
+const normRef=r=>String(r).trim().toLowerCase().replace(/\s+/g,'');
+const PALETTE=['#3482e6','#46aa50','#f5a01e','#8e5bd6','#8793a3','#d1343f'];
+
+/* ================= tipos de pieza por defecto (solo estructura) ================= */
+function defTypes(){
+  const t=(name,system,channel='',common=false,alias=[])=>({name,system,channel,common,alias});
+  return [
+    t('PCU K','PCU'),t('PCU COL','PCU'),t('PCU K+COL','PCU','',false,['PCU K','PCU COL']),t('PCU','PCU'),
+    t('PCDU K','PCDU','K'),t('PCDU C','PCDU','C'),t('PCDU M','PCDU','M'),t('PCDU Y','PCDU','Y'),
+    t('Revelador K','Reveladoras','K'),t('Revelador C','Reveladoras','C'),t('Revelador M','Reveladoras','M'),t('Revelador Y','Reveladoras','Y'),
+    t('Revelador','Reveladoras'),t('Sleeve','Sleeve'),
+    t('ITB unit','Transferencia'),t('Banda transferencia','Transferencia','',true),t('Limpieza ITB','Transferencia','',true),
+    t('Fusor','Fusión'),t('Rodillo presión','Fusión','',true),
+    t('Feed roller','Alimentación'),t('Separate roller','Alimentación'),
+    t('Tambor','Otros','',true),t('Cuchilla','Otros','',true),t('Carga','Otros','',true),t('Sellos','Otros','',true),
+    t('Consumible','Consumibles')
+  ];
+}
+
+/* ================= estado ================= */
+let S={models:[],groups:[],parts:[],types:[]},sel={k:'all',id:null},editId=null,F={hab:false,chk:false,type:'',empty:false},serieView='matrix',exp=new Set(),selRef=null;
+let editing=false,mode='',dirty=false,baseSha=null,REPO='',TOKEN='',loadErr=false;
+const emptyData=()=>({version:5,updated:'',types:defTypes(),models:[],groups:[],parts:[]});
+function norm(d){
+  if(!d||!Array.isArray(d.models)||!Array.isArray(d.groups)||!Array.isArray(d.parts))return null;
+  if(!Array.isArray(d.types)||!d.types.length)d.types=defTypes();
+  return d;
+}
+async function loadPublished(){
+  try{const r=await fetch('data.json',{cache:'no-store'});if(!r.ok)throw 0;const d=norm(await r.json());if(!d)throw 0;S=d;return true}
+  catch{S=emptyData();return false}
+}
+function save(){
+  if(!editing)return;
+  dirty=true;
+  try{localStorage.setItem(K.draft,JSON.stringify({repo:REPO,base:baseSha,data:S}))}catch{}
+  renderStatus();
+}
+const M=id=>S.models.find(m=>m.id===id),G=id=>S.groups.find(g=>g.id===id),P=id=>S.parts.find(p=>p.id===id);
+const TY=n=>S.types.find(t=>t.name===n);
+const tIdx=n=>{const i=S.types.findIndex(t=>t.name===n);return i<0?9999:i};
+const sysOrder=()=>[...new Set(S.types.map(t=>t.system||'Otros'))];
+const sysOf=n=>TY(n)?.system||'Otros';
+const sIdx=n=>{const i=sysOrder().indexOf(sysOf(n));return i<0?9999:i};
+const chOf=n=>TY(n)?.channel||'';
+const colsOf=p=>{const t=TY(p.type);return t&&t.alias&&t.alias.length?t.alias:[p.type||'Sin tipo']};
+const serieOf=id=>S.groups.find(g=>g.kind==='serie'&&g.models.includes(id));
+const franjaOf=id=>S.groups.find(g=>g.kind==='franja'&&g.models.includes(id));
+const gname=g=>g.kind==='franja'&&G(g.parent)?g.name+' · '+G(g.parent).name:g.name;
+const famOf=g=>g.family||'Sin familia';
+let MO=new Map();
+function buildMO(){MO=new Map();S.parts.forEach(p=>{const s=new Set();p.t.forEach(t=>{if(t.k==='m'){if(M(t.id))s.add(t.id)}else{const g=G(t.id);if(g)g.models.forEach(id=>M(id)&&s.add(id))}});MO.set(p.id,s)})}
+const mo=p=>MO.get(p.id)||new Set();
+const addT=(p,ts)=>ts.forEach(t=>{if(!p.t.some(x=>x.k===t.k&&x.id===t.id))p.t.push(t)});
+const pass=p=>(!F.hab||p.hab)&&(!F.chk||p.chk)&&(!F.type||p.type===F.type);
+const qv=()=>$('#q').value.trim().toLowerCase();
+const txt=p=>{const q=qv();return !q||[p.ref,p.name,p.type,p.note].join(' ').toLowerCase().includes(q)};
+const mtxt=m=>{const q=qv();return !q||[m.name,m.platform,...(m.codes||[])].join(' ').toLowerCase().includes(q)};
+
+/* ================= sesión de editor (GitHub) ================= */
+const isAuth=()=>editing;
+const localOK=()=>location.protocol==='file:'||['localhost','127.0.0.1'].includes(location.hostname);
+function detectRepo(){
+  const m=location.hostname.match(/^([^.]+)\.github\.io$/i);
+  if(!m)return '';
+  const seg=location.pathname.split('/').filter(Boolean)[0];
+  return m[1]+'/'+(seg&&!/\.html?$/i.test(seg)?seg:m[1]+'.github.io');
+}
+const gh=(path,o={})=>fetch('https://api.github.com'+path,{...o,headers:{Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',Authorization:'Bearer '+TOKEN,...(o.headers||{})}});
+function b64(str){const b=new TextEncoder().encode(str);let bin='';for(let i=0;i<b.length;i+=0x8000)bin+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000));return btoa(bin)}
+function unb64(x){const bin=atob(x.replace(/\s/g,''));return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0)))}
+async function ghRemote(){
+  const r=await gh(`/repos/${REPO}/contents/data.json`,{cache:'no-store'});
+  if(r.status===404)return{sha:null,data:null};
+  if(!r.ok)throw new Error('No se pudo leer data.json ('+r.status+')');
+  const j=await r.json();let txt;
+  if(j.content)txt=unb64(j.content);
+  else{const r2=await gh(`/repos/${REPO}/contents/data.json`,{headers:{Accept:'application/vnd.github.raw+json'},cache:'no-store'});if(!r2.ok)throw new Error('No se pudo leer data.json ('+r2.status+')');txt=await r2.text()}
+  return{sha:j.sha,data:norm(JSON.parse(txt))};
+}
+const clearTok=()=>{try{sessionStorage.removeItem(K.tok);localStorage.removeItem(K.tok)}catch{}};
+function readDraft(){try{return JSON.parse(localStorage.getItem(K.draft))}catch{return null}}
+async function loginGH(repo,token,remember,silent){
+  REPO=repo.trim();TOKEN=token.trim();
+  if(!/^[\w.-]+\/[\w.-]+$/.test(REPO))throw new Error('Repositorio con formato incorrecto (usuario/repositorio)');
+  let r;try{r=await gh('/repos/'+REPO)}catch{throw new Error('Sin conexión con GitHub')}
+  if(r.status===401)throw new Error('Token no válido o caducado');
+  if(r.status===404)throw new Error('Repositorio no encontrado o el token no tiene acceso a él');
+  if(!r.ok)throw new Error('Error de GitHub ('+r.status+')');
+  const j=await r.json();
+  if(j.permissions&&!j.permissions.push)throw new Error('El token no tiene permiso de escritura en este repositorio');
+  const rem=await ghRemote();baseSha=rem.sha;
+  const dr=readDraft();
+  if(dr&&dr.repo===REPO&&norm(dr.data)&&(dr.base===baseSha||silent||(confirm('Hay un borrador local basado en una versión anterior de los datos publicados. Aceptar: descartarlo y usar la versión publicada. Cancelar: conservar el borrador (el publicar podrá dar conflicto).')===false))){
+    S=dr.data;dirty=true;if(!silent)toast('Borrador recuperado');
+  }else{S=rem.data||emptyData();dirty=false;try{localStorage.removeItem(K.draft)}catch{}}
+  editing=true;mode='gh';loadErr=false;
+  try{
+    localStorage.setItem(K.repo,REPO);
+    if(remember===true){localStorage.setItem(K.tok,TOKEN);sessionStorage.removeItem(K.tok)}
+    else if(remember===false){sessionStorage.setItem(K.tok,TOKEN);localStorage.removeItem(K.tok)}
+  }catch{}
+}
+async function enterLocal(){
+  const dr=readDraft();let d=dr&&dr.repo===''?norm(dr.data):null;
+  if(!d){try{const lg=norm(JSON.parse(localStorage.getItem(K.legacy)));if(lg)d=lg}catch{}}
+  if(d){S=d;dirty=true}
+  editing=true;mode='local';REPO='';baseSha=null;
+}
+function applyAuth(){document.body.classList.toggle('auth',editing);renderStatus();render()}
+function renderStatus(){
+  $('#dirty').style.display=editing&&dirty?'inline-block':'none';
+  $('#btnPub').textContent=mode==='local'?'Exportar JSON':'Publicar';
+}
+function openLogin(){
+  $('#lErr').textContent='';$('#lTok').value='';$('#lRepo').value=localStorage.getItem(K.repo)||detectRepo();
+  $('#lLocal').style.display=localOK()?'':'none';$('#mLogin').classList.add('open');
+  ($('#lRepo').value?$('#lTok'):$('#lRepo')).focus();
+}
+$('#fLogin').addEventListener('submit',async e=>{
+  e.preventDefault();const b=$('#lGo');b.disabled=true;b.textContent='Comprobando…';$('#lErr').textContent='';
+  try{await loginGH($('#lRepo').value,$('#lTok').value,$('#lRem').checked);closeModals();applyAuth();toast('Sesión de editor iniciada')}
+  catch(err){$('#lErr').textContent=err.message;editing=false;TOKEN=''}
+  b.disabled=false;b.textContent='Entrar';
+});
+$('#lLocal').onclick=async()=>{await enterLocal();closeModals();applyAuth();toast('Modo local: los cambios no se publican')};
+$('#btnIn').onclick=openLogin;
+$('#btnOut').onclick=async()=>{
+  if(dirty&&!confirm('Hay cambios sin publicar. El borrador se conserva en este navegador. ¿Cerrar sesión?'))return;
+  editing=false;mode='';TOKEN='';clearTok();dirty=false;
+  loadErr=!(await loadPublished());sel={k:'all',id:null};selRef=null;applyAuth();toast('Sesión cerrada');
+};
+function downloadJSON(){S.updated=new Date().toISOString();download('data.json',JSON.stringify(S,null,1),'application/json')}
+$('#btnPub').onclick=async()=>{
+  if(!editing)return;
+  if(mode==='local'){downloadJSON();toast('data.json descargado: súbelo al repositorio');return}
+  const msg=prompt('Descripción del cambio','Actualización de referencias');if(msg===null)return;
+  const b=$('#btnPub');b.disabled=true;b.textContent='Publicando…';
+  try{
+    S.version=5;S.updated=new Date().toISOString();
+    const body={message:msg.trim()||'Actualización de referencias',content:b64(JSON.stringify(S,null,1))};
+    if(baseSha)body.sha=baseSha;
+    const r=await gh(`/repos/${REPO}/contents/data.json`,{method:'PUT',body:JSON.stringify(body)});
+    if(r.status===409||r.status===422){
+      if(confirm('Otra persona ha publicado cambios desde que empezaste a editar, y no se ha publicado nada para no sobrescribirlos. ¿Descargar tu versión como copia JSON? Después recarga la página para ver la versión publicada.'))downloadJSON();
+      return;
+    }
+    if(r.status===401||r.status===403){alert('GitHub rechazó la publicación ('+r.status+'): el token no es válido o no tiene permiso de escritura (Contents: Read and write).');return}
+    if(!r.ok){alert('Error al publicar ('+r.status+')');return}
+    const j=await r.json();baseSha=j.content&&j.content.sha;dirty=false;try{localStorage.removeItem(K.draft)}catch{}
+    toast('Publicado. GitHub tardará un momento en actualizar la web');
+  }catch{alert('No se pudo conectar con GitHub. Los cambios siguen guardados como borrador en este navegador.')}
+  finally{b.disabled=false;renderStatus()}
+};
+window.addEventListener('beforeunload',e=>{if(editing&&dirty){e.preventDefault();e.returnValue=''}});
+
+/* ================= utilidades ================= */
+function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('on');setTimeout(()=>el.classList.remove('on'),1900)}
+function closeModals(){document.querySelectorAll('.modal').forEach(m=>m.classList.remove('open'))}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModals()});
+const hue=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return h};
+const color=s=>`hsl(${hue(String(s).toLowerCase())} 62% 46%)`;
+const mchip=m=>`<span class="mc" data-go="m:${m.id}" style="--c:${color(m.name)}">${esc(m.name)}</span>`;
+const gchip=g=>`<span class="mc g" data-go="g:${g.id}" style="--c:${color(g.name)}">${esc(gname(g))}</span>`;
+function summ(set,max=10){
+  const left=new Set(set),out=[];
+  S.groups.map(g=>({g,ms:g.models.filter(id=>M(id))})).filter(x=>x.ms.length>1&&x.ms.every(id=>set.has(id)))
+    .sort((a,b)=>b.ms.length-a.ms.length).forEach(x=>{if(x.ms.some(id=>left.has(id))){out.push(gchip(x.g));x.ms.forEach(id=>left.delete(id))}});
+  [...left].map(M).filter(Boolean).sort((a,b)=>cmp(a.name,b.name)).forEach(m=>out.push(mchip(m)));
+  return out.slice(0,max).join('')+(out.length>max?`<span class="note">+${out.length-max}</span>`:'')||'<span class="note">—</span>';
+}
+function fmt(r,extra=''){
+  r=String(r);
+  return /^[A-Za-z0-9]{8}$/.test(r)?`<span class="rp">${esc(r.slice(0,4))}</span><span class="rs">${esc(r.slice(4))}</span>`:`<span class="plain">${esc(r)}</span>`;
+}
+const refSpan=(p,cls='')=>`<span class="refc ${cls} ${selRef===p.id?'sel':''}" data-pid="${p.id}" title="Clic: copiar y ver modelos">${fmt(p.ref)}</span>`;
+const badges=p=>(p.hab?'':'<span class="u o">poco habitual</span>')+(p.chk?'<span class="u w">verificar</span>':'');
+function copyText(t){
+  const fb=()=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();try{document.execCommand('copy')}catch{}a.remove()};
+  try{if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).catch(fb);return}}catch{}
+  fb();
+}
+function isCommonPart(p,ms){const t=TY(p.type);return !!(t&&t.common&&ms.length>1&&ms.every(m=>mo(p).has(m.id)))}
+
+/* ================= navegación ================= */
+function go(k,id){
+  sel={k,id};
+  if(k==='m'){const s=serieOf(id);if(s){exp.add(s.id);exp.add('f:'+famOf(s))}}
+  if(k==='g'){const g=G(id);if(g){const s=g.kind==='serie'?g:G(g.parent);if(s){exp.add(s.id);exp.add('f:'+famOf(s))}}}
+  if(k==='f')exp.add('f:'+id);
+  F.type='';render();window.scrollTo({top:0})
+}
+
+/* ================= render ================= */
+function render(){
+  if(sel.k==='m'&&!M(sel.id))sel={k:'all',id:null};
+  if(sel.k==='g'&&!G(sel.id))sel={k:'all',id:null};
+  if(selRef&&!P(selRef))selRef=null;
+  buildMO();renderSide();renderMain();
+  $('#dlType').innerHTML=S.types.map(t=>`<option value="${esc(t.name)}">`).join('');
+  $('#dlFam').innerHTML=[...new Set(S.groups.map(g=>g.family).filter(Boolean))].map(t=>`<option value="${esc(t)}">`).join('');
+  $('#dlSys').innerHTML=sysOrder().map(t=>`<option value="${esc(t)}">`).join('');
+}
+function renderSide(){
+  const gen=S.parts.filter(p=>p.gen).length,un=S.parts.filter(p=>!p.gen&&!p.t.length).length;
+  const cnt=ids=>S.parts.filter(p=>{const m=mo(p);return ids.some(i=>m.has(i))}).length;
+  const it=(k,id,label,n,c,cls='')=>`<div class="it ${cls} ${sel.k===k&&sel.id===id?'on':''}" data-k="${k}" data-id="${esc(id??'')}">${c?`<i style="--c:${c}"></i>`:''}<span class="t">${esc(label)}</span><span class="n">${n}</span>${isAuth()&&(k==='m'||k==='g')?`<span class="ed" data-ed="${k}:${id}" title="Editar">✎</span>`:''}</div>`;
+  let h=it('all',null,'Inicio',S.parts.length)+it('gen',null,'Generales (consumibles)',gen);
+  if(un)h+=it('un',null,'Sin asignar',un);
+  const series=S.groups.filter(g=>g.kind==='serie');
+  [...new Set(series.map(famOf))].sort(cmp).forEach(f=>{
+    const ss=series.filter(g=>famOf(g)===f);
+    h+=it('f',f,f,cnt(ss.flatMap(g=>g.models)),null,'fam');
+    if(!exp.has('f:'+f))return;
+    ss.forEach(g=>{
+      h+=it('g',g.id,g.name,cnt(g.models),color(g.name),'ser');
+      if(exp.has(g.id))g.models.map(M).filter(Boolean).forEach(m=>h+=it('m',m.id,m.name,cnt([m.id]),null,'sub'));
+    });
+  });
+  const free=S.models.filter(m=>!serieOf(m.id));
+  if(free.length){h+='<div class="sg">Sin serie</div>';free.forEach(m=>h+=it('m',m.id,m.name,cnt([m.id]),null))}
+  const custom=S.groups.filter(g=>g.kind==='grupo');
+  if(custom.length){h+='<div class="sg">Grupos libres</div>';custom.forEach(g=>h+=it('g',g.id,g.name,cnt(g.models),color(g.name)))}
+  $('#side').innerHTML=h;
+}
+function tbl(list,aplica=true){
+  list=[...list].sort((a,b)=>sIdx(a.type)-sIdx(b.type)||tIdx(a.type)-tIdx(b.type)||cmp(a.ref,b.ref));
+  return `<div class="tw"><table><thead><tr><th>Tipo</th><th>Referencia</th><th>Descripción</th>${aplica?'<th>Aplica a</th>':''}${isAuth()?'<th></th>':''}</tr></thead><tbody>${list.map(p=>`<tr><td class="ty">${esc(p.type)}</td><td>${refSpan(p)}</td><td>${esc(p.name)}${badges(p)}${p.note?`<div class="note">${esc(p.note)}</div>`:''}</td>${aplica?`<td>${summ(mo(p))}</td>`:''}${isAuth()?`<td><button class="sm" data-pe="${p.id}">Editar</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;
+}
+const empty=m=>`<div class="empty">${m}</div>`;
+const addBtn=(type,t)=>`<button class="add sm" data-add="${esc(JSON.stringify({type,t}))}" title="Añadir referencia">+</button>`;
+
+/* ---- matriz estilo hoja ---- */
+function matrixHTML(ms,serie){
+  const q=qv();
+  if(!ms.length)return empty('Sin modelos'+(isAuth()?'. Usa "+ Modelo".':''));
+  const parts=S.parts.filter(p=>!p.gen&&pass(p)&&ms.some(m=>mo(p).has(m.id)));
+  const common=[],mx=[];
+  parts.forEach(p=>(serie&&isCommonPart(p,ms)?common:mx).push(p));
+  const set=new Set();mx.forEach(p=>colsOf(p).forEach(t=>set.add(t)));
+  if(isAuth()&&F.empty)S.types.forEach(t=>{if(!(serie&&ms.length>1&&t.common)&&!(t.alias&&t.alias.length)&&t.system!=='Consumibles')set.add(t.name)});
+  const types=[...set].sort((a,b)=>sIdx(a)-sIdx(b)||tIdx(a)-tIdx(b)||cmp(a,b));
+  const sys=[];types.forEach(t=>{const s=sysOf(t);if(sys.length&&sys[sys.length-1].s===s)sys[sys.length-1].n++;else sys.push({s,n:1})});
+  const cols=types.map(t=>ms.map(m=>mx.filter(p=>mo(p).has(m.id)&&colsOf(p).includes(t)).sort((a,b)=>cmp(a.ref,b.ref))));
+  const key=l=>l.map(p=>p.id).join(',');
+  const skip=types.map(()=>ms.map(()=>false));
+  let h=`<div class="tw"><table class="mtx"><thead><tr><th class="stk" rowspan="2">Modelo</th><th rowspan="2">Código</th><th rowspan="2">Plataforma</th>${sys.map(x=>`<th class="sysh" colspan="${x.n}">${esc(x.s)}</th>`).join('')}</tr><tr>${types.map(t=>`<th class="${chOf(t)?'ch-'+chOf(t):''}">${esc(t)}</th>`).join('')}</tr></thead><tbody>`;
+  ms.forEach((m,i)=>{
+    const f=franjaOf(m.id),bar=f&&f.color?`box-shadow:inset 6px 0 0 ${f.color}`:'';
+    h+=`<tr data-mid="${m.id}"><td class="stk" data-go="m:${m.id}" style="${bar}"><b>${esc(m.name)}</b></td><td class="nm">${esc((m.codes||[]).join(' / '))}</td><td class="nm">${esc(m.platform||'')}</td>`;
+    types.forEach((t,j)=>{
+      if(skip[j][i])return;
+      const l=cols[j][i],ch=chOf(t);
+      if(!l.length){h+=`<td class="emp">${addBtn(t,[{k:'m',id:m.id}])}</td>`;return}
+      let n=1;while(i+n<ms.length&&key(cols[j][i+n])===key(l)){skip[j][i+n]=true;n++}
+      const hit=q&&l.some(p=>[p.ref,p.name].join(' ').toLowerCase().includes(q));
+      h+=`<td rowspan="${n}" class="${ch?'ch-'+ch:''} ${hit?'hit':''}">${l.map(p=>refSpan(p)).join('<br>')}</td>`;
+    });
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+  if(serie&&ms.length>1){
+    const ctypes=S.types.filter(t=>t.common).map(t=>t.name);
+    const items=ctypes.map(t=>({t,l:common.filter(p=>p.type===t).sort((a,b)=>cmp(a.ref,b.ref))})).filter(x=>x.l.length||isAuth());
+    const extra=[...new Set(common.map(p=>p.type).filter(t=>!ctypes.includes(t)))].map(t=>({t,l:common.filter(p=>p.type===t)}));
+    const all=[...items,...extra];
+    if(all.length)h+=`<div class="strip"><h4>Común a toda la serie</h4><div class="sgrid">${all.map(x=>`<div class="sitem"><div class="l">${esc(x.t)}</div><div class="v">${x.l.map(p=>refSpan(p)).join('<br>')||addBtn(x.t,[{k:'g',id:serie.id}])}</div></div>`).join('')}</div></div>`;
+  }
+  return h+'<p class="legend">Las celdas combinadas son una misma referencia compartida por varios modelos. Clic en una referencia: se copia y se muestran los modelos donde aplica. Colores de cabecera: K, C, M, Y de las unidades reveladoras; barra lateral de fila: franja.</p>';
+}
+function serieBlock(g,heading){
+  const ms=g.models.map(M).filter(Boolean);
+  return `<div class="sblock">${heading?`<h3 data-go="g:${g.id}"><i class="mc" style="--c:${color(g.name)};padding:0 6px"></i>${esc(g.name)} <small>${ms.length} modelos</small></h3>`:''}${serieView==='list'&&!heading?'':matrixHTML(ms,g)}</div>`;
+}
+
+/* ---- ficha de modelo ---- */
+function fichaHTML(m){
+  const sr=serieOf(m.id),sset=sr?sr.models.map(M).filter(Boolean):[];
+  const list=S.parts.filter(p=>mo(p).has(m.id)&&pass(p)&&txt(p));
+  if(!list.length)return empty('Sin referencias para este modelo'+(isAuth()?'. Usa "+ Pieza".':''));
+  const bySys={};list.forEach(p=>(bySys[sysOf(p.type)]??=[]).push(p));
+  const sysList=Object.keys(bySys).sort((a,b)=>sysOrder().indexOf(a)-sysOrder().indexOf(b));
+  return `<div class="fgrid">${sysList.map(s=>`<section class="fcard"><h3>${esc(s)}</h3>${bySys[s].sort((a,b)=>tIdx(a.type)-tIdx(b.type)||cmp(a.ref,b.ref)).map(p=>{
+    const others=new Set([...mo(p)].filter(id=>id!==m.id)),ch=chOf(p.type);
+    return `<div class="fr"><div class="ft ${ch?'ch-'+ch:''}">${esc(p.type)}</div><div>${refSpan(p,'big')}${isCommonPart(p,sset)?'<span class="u c">común serie</span>':''}${badges(p)}</div>${p.name||p.note?`<div class="fn">${esc(p.name)}${p.name&&p.note?' · ':''}${esc(p.note)}</div>`:''}${others.size?`<div class="fs">${summ(others,6)}</div>`:''}</div>`}).join('')}</section>`).join('')}</div>`;
+}
+
+/* ---- barra de información ---- */
+function renderInfo(){
+  const el=$('#info'),p=selRef&&P(selRef);
+  if(!p){el.className='';el.innerHTML='';return}
+  const ch=chOf(p.type);
+  el.className='on';
+  el.innerHTML=`<div class="row"><span class="refc big sel" data-copy="${esc(p.ref)}">${fmt(p.ref)}</span><span class="${ch?'ft ch-'+ch:'note'}">${esc(p.type)}</span><span>${esc(p.name)}</span>${badges(p)}<span class="sp"></span><button class="sm" data-copy="${esc(p.ref)}">Copiar</button>${isAuth()?`<button class="sm" data-pe="${p.id}">Editar</button>`:''}<button class="sm" id="infoX">Cerrar</button></div>
+  <div style="margin-top:6px"><span class="note">${p.gen?'Pieza general':mo(p).size?`Aplica a ${mo(p).size} modelo${mo(p).size>1?'s':''}:`:'Sin modelos asignados'}</span> ${summ(mo(p),30)}</div>`;
+}
+
+/* ---- principal ---- */
+function renderMain(){
+  const q=qv();
+  const st=a=>`<div class="st">${a.map(([n,l])=>`<div><b>${n}</b><span>${l}</span></div>`).join('')}</div>`;
+  const tools=(withEmpty)=>`<div class="tools"><label><input type="checkbox" id="tHab" ${F.hab?'checked':''}> Solo habituales</label><label><input type="checkbox" id="tChk" ${F.chk?'checked':''}> Por verificar</label><select id="tType"><option value="">Todos los tipos</option>${S.types.map(t=>`<option ${t.name===F.type?'selected':''}>${esc(t.name)}</option>`).join('')}</select>${withEmpty&&isAuth()?`<label><input type="checkbox" id="tEmpty" ${F.empty?'checked':''}> Mostrar tipos vacíos (para añadir)</label>`:''}</div>`;
+  let out='';
+  const sel_=sel;
+  if(sel_.k==='gen'||sel_.k==='un'){
+    const base=S.parts.filter(p=>sel_.k==='gen'?p.gen:(!p.gen&&!p.t.length));
+    const l=base.filter(p=>txt(p)&&pass(p));
+    out=`<div class="mh"><h2>${sel_.k==='gen'?'Generales (consumibles)':'Sin asignar'}</h2><div class="sub2">${sel_.k==='gen'?'Piezas y productos que no dependen de un modelo':'Referencias sin modelo: edítalas para asignarlas'}</div>${st([[l.length,'Referencias']])}${tools(false)}</div>`;
+    out+=l.length?tbl(l,false):empty(isAuth()?'Vacío. Marca "Pieza general" al crear una pieza.':'Vacío');
+  }else if(sel_.k==='m'){
+    const m=M(sel_.id),sr=serieOf(m.id),fr=franjaOf(m.id);
+    const gr=S.groups.filter(g=>g.kind==='grupo'&&g.models.includes(m.id));
+    const n=S.parts.filter(p=>mo(p).has(m.id)).length;
+    out=`<div class="mh" style="--c:${color(m.name)}"><div class="nomen"><div><b>${esc(m.name)}</b><span>Modelo</span></div><div><b>${esc((m.codes||[]).join(' / '))||'—'}</b><span>Código</span></div><div><b>${esc(m.platform||'—')}</b><span>Plataforma</span></div></div>
+      <div style="margin-top:10px">${[sr,fr,...gr].filter(Boolean).map(gchip).join('')}</div>${st([[n,'Referencias']])}${tools(false)}</div>`+fichaHTML(m);
+  }else if(sel_.k==='g'){
+    const g=G(sel_.id),ms=g.models.map(M).filter(Boolean);
+    const kindL={serie:'Serie',franja:'Franja',grupo:'Grupo libre'}[g.kind];
+    const frs=g.kind==='serie'?S.groups.filter(x=>x.kind==='franja'&&x.parent===g.id):[];
+    const base=S.parts.filter(p=>ms.some(m=>mo(p).has(m.id)));
+    const commonN=g.kind==='serie'?base.filter(p=>isCommonPart(p,ms)).length:0;
+    let head=`<div class="mh" style="--c:${g.color||color(g.name)}"><h2>${esc(gname(g))}</h2><div class="sub2">${kindL}${g.family?' · '+esc(g.family):''} · ${ms.length} modelos</div>`;
+    if(frs.length)head+=`<div style="margin-top:8px">${frs.map(gchip).join('')}</div>`;
+    head+=st([[base.length,'Referencias'],...(g.kind==='serie'?[[commonN,'Comunes a la serie']]:[])]);
+    head+=`<div class="tools"><button class="sm ${serieView==='matrix'?'on':''}" data-sv="matrix">Matriz</button><button class="sm ${serieView==='list'?'on':''}" data-sv="list">Lista</button></div>`;
+    head+=tools(true)+'</div>';
+    if(serieView==='matrix')out=head+matrixHTML(ms,g.kind==='serie'?g:null);
+    else{
+      const all=base.filter(p=>txt(p)&&pass(p));
+      out=head+(all.length?tbl(all):empty('Sin referencias'));
+    }
+  }else if(sel_.k==='f'){
+    const ss=S.groups.filter(g=>g.kind==='serie'&&famOf(g)===sel_.id);
+    const n=new Set(ss.flatMap(g=>g.models)).size;
+    out=`<div class="mh"><h2>${esc(sel_.id)}</h2><div class="sub2">Familia · ${ss.length} series · ${n} modelos</div>${isAuth()&&sel_.id!=='Sin familia'?`<div class="tools"><button class="sm" data-fam="${esc(sel_.id)}">Renombrar familia</button></div>`:''}${tools(true)}</div>`;
+    out+=ss.map(g=>serieBlock(g,true)).join('')||empty('Sin series');
+  }else{
+    if(q){
+      const mm=S.models.filter(mtxt),all=S.parts.filter(p=>txt(p)&&pass(p));
+      out=`<div class="mh"><h2>Resultados</h2><div class="sub2">«${esc($('#q').value.trim())}»</div>${st([[mm.length,'Modelos'],[all.length,'Referencias']])}${tools(false)}</div>`;
+      if(mm.length)out+=`<div class="sec"><h3>Modelos <small>${mm.length}</small></h3><div class="tw" style="padding:10px">${mm.map(m=>`<span class="mc" data-go="m:${m.id}" style="--c:${color(m.name)}">${esc(m.name)}${m.codes&&m.codes.length?' · '+esc(m.codes.join('/')):''}</span>`).join('')}</div></div>`;
+      out+=`<div class="sec"><h3>Referencias <small>${all.length}</small></h3>${all.length?tbl(all):empty('Sin resultados')}</div><p class="legend">Pulsa un chip de serie para abrirla con la referencia resaltada.</p>`;
+    }else{
+      const series=S.groups.filter(g=>g.kind==='serie');
+      const fams=[...new Set(series.map(famOf))].sort(cmp);
+      out=`<div class="mh"><h2>Referencias por modelo</h2><div class="sub2">${fams.length} familias · ${series.length} series · ${S.models.length} modelos · ${S.parts.length} referencias${S.updated?' · Actualizado el '+new Date(S.updated).toLocaleDateString('es-ES'):''}</div></div>`;
+      if(!fams.length)out+=`<div class="empty"><b>Inventario vacío</b><p>${isAuth()?'Orden recomendado para empezar:':'Todavía no hay datos. Inicia sesión como editor para añadirlos.'}</p>${isAuth()?`<div class="steps"><div><b>1. Serie</b>Crea una serie con su familia (Metis → Metis MF4) y sus franjas (Alta, Media, Baja) con "+ Serie / grupo".</div><div><b>2. Modelos</b>Añade cada modelo con nombre, códigos y plataforma, y asígnalo a su serie y franja con "+ Modelo".</div><div><b>3. Piezas</b>Añade referencias con "+ Pieza" o "+ Varias", o directamente con el botón "+" de cada celda de la matriz.</div></div><p class="hint">Los tipos de pieza (columnas, colores K/C/M/Y, comunes de serie) se configuran en Ajustes → Tipos de pieza.</p>`:''}</div>`;
+      else out+=`<div class="fams">${fams.map(f=>{const ss=series.filter(g=>famOf(g)===f);return `<div class="famc" data-go="f:${esc(f)}" style="--c:${color(f)}"><h3>${esc(f)}</h3><div>${ss.map(g=>esc(g.name)).join(' · ')}</div><div>${new Set(ss.flatMap(g=>g.models)).size} modelos</div></div>`}).join('')}</div>`;
+    }
+  }
+  const banner=loadErr&&!editing?'<div class="banner"><b>No se han podido cargar los datos publicados (data.json).</b> Si has abierto el archivo directamente desde el disco, el navegador lo bloquea: usa la dirección web publicada, o el modo local del acceso de editor.</div>':'';
+  $('#main').innerHTML=banner+out;renderInfo();
+}
+
+/* ================= eventos ================= */
+$('#q').addEventListener('input',renderMain);
+$('#side').addEventListener('click',e=>{
+  const ed=e.target.closest('[data-ed]');
+  if(ed){e.stopPropagation();const[k,id]=ed.dataset.ed.split(':');k==='m'?openModel(M(id)):openGroup(G(id));return}
+  const it=e.target.closest('.it');if(!it)return;
+  const k=it.dataset.k,id=it.dataset.id||null;
+  if(sel.k===k&&sel.id===id){
+    if(k==='f'){const key='f:'+id;exp.has(key)?exp.delete(key):exp.add(key);render();return}
+    if(k==='g'&&G(id)?.kind==='serie'){exp.has(id)?exp.delete(id):exp.add(id);render();return}
+  }
+  go(k,id);
+});
+document.addEventListener('click',e=>{
+  const t=e.target;
+  if(t.hasAttribute&&t.hasAttribute('data-close')||t.classList.contains('modal')){closeModals();return}
+  const ad=t.closest('[data-add]');
+  if(ad){const d=JSON.parse(ad.dataset.add);openPart(null,d);return}
+  const go_=t.closest('[data-go]');
+  if(go_){const i=go_.dataset.go.indexOf(':');closeModals();go(go_.dataset.go.slice(0,i),go_.dataset.go.slice(i+1));return}
+  const pe=t.closest('[data-pe]');
+  if(pe){closeModals();openPart(P(pe.dataset.pe));return}
+  const cp=t.closest('[data-copy]');
+  if(cp){copyText(cp.dataset.copy);toast('Copiada: '+cp.dataset.copy);return}
+  const pid=t.closest('[data-pid]');
+  if(pid){selRef=pid.dataset.pid;const p=P(selRef);copyText(p.ref);toast('Copiada: '+p.ref);renderMain();return}
+  if(t.id==='infoX'){selRef=null;renderMain();return}
+  const sv=t.closest('[data-sv]');
+  if(sv){serieView=sv.dataset.sv;renderMain();return}
+  const fm=t.closest('[data-fam]');
+  if(fm){
+    const old=fm.dataset.fam,nn=(prompt('Nuevo nombre de la familia',old)||'').trim();
+    if(nn&&nn!==old){S.groups.forEach(g=>{if(g.kind==='serie'&&g.family===old)g.family=nn});exp.delete('f:'+old);exp.add('f:'+nn);sel={k:'f',id:nn};save();render()}
+  }
+});
+document.addEventListener('mouseover',e=>{
+  const r=e.target.closest&&e.target.closest('.refc[data-pid]');if(!r)return;
+  const p=P(r.dataset.pid);if(!p)return;const s=mo(p);
+  document.querySelectorAll('tr[data-mid]').forEach(tr=>tr.classList.toggle('hl',s.has(tr.dataset.mid)));
+});
+document.addEventListener('mouseout',e=>{if(e.target.closest&&e.target.closest('.refc[data-pid]'))document.querySelectorAll('tr.hl').forEach(tr=>tr.classList.remove('hl'))});
+$('#main').addEventListener('change',e=>{
+  if(e.target.id==='tHab')F.hab=e.target.checked;
+  else if(e.target.id==='tChk')F.chk=e.target.checked;
+  else if(e.target.id==='tType')F.type=e.target.value;
+  else if(e.target.id==='tEmpty')F.empty=e.target.checked;
+  else return;
+  renderMain();
+});
+document.addEventListener('input',e=>{
+  if(!e.target.classList.contains('pf'))return;
+  const v=e.target.value.trim().toLowerCase();
+  e.target.parentElement.querySelectorAll('.pick label').forEach(l=>l.style.display=!v||l.dataset.s.includes(v)?'':'none');
+});
+
+/* ================= selector de destinos ================= */
+function pickHTML(name,checkedT=[]){
+  const has=(k,id)=>checkedT.some(t=>t.k===k&&t.id===id);
+  const lab=(k,id,text,extra='')=>`<label data-s="${esc((text+' '+extra).toLowerCase())}"><input type="checkbox" name="${name}" value="${k}:${id}" ${has(k,id)?'checked':''}> ${esc(text)}${extra?` <span class="note">${esc(extra)}</span>`:''}</label>`;
+  const gs=S.groups.filter(g=>g.models.length>0),order={serie:0,franja:1,grupo:2};
+  let h='';
+  if(gs.length)h+='<div class="ph">Series, franjas y grupos (todos sus modelos)</div>'+[...gs].sort((a,b)=>order[a.kind]-order[b.kind]||cmp(gname(a),gname(b))).map(g=>lab('g',g.id,gname(g),g.kind==='serie'?'serie':g.kind==='franja'?'franja':'grupo')).join('');
+  if(S.models.length)h+='<div class="ph">Modelos</div>'+[...S.models].sort((a,b)=>cmp(a.name,b.name)).map(m=>lab('m',m.id,m.name,(m.codes||[]).join(' / '))).join('');
+  return h||'<span class="hint">Crea primero un modelo.</span>';
+}
+const readPick=name=>[...document.querySelectorAll(`input[name=${name}]:checked`)].map(i=>{const k=i.value.indexOf(':');return{k:i.value.slice(0,k),id:i.value.slice(k+1)}});
+const defaultT=()=>sel.k==='m'?[{k:'m',id:sel.id}]:sel.k==='g'?[{k:'g',id:sel.id}]:[];
+function resetFilters(){document.querySelectorAll('.pf').forEach(i=>i.value='')}
+function ensureType(name){if(name&&!TY(name))S.types.push({name,system:'Otros',channel:'',common:false,alias:[]})}
+
+/* ================= pieza ================= */
+function openPart(p,pre){
+  if(!isAuth())return;editId=p?p.id:null;resetFilters();
+  $('#pTitle').textContent=p?'Editar pieza':'Nueva pieza';
+  $('#pRef').value=p?.ref||'';$('#pType').value=p?.type||pre?.type||'';$('#pName').value=p?.name||'';$('#pNote').value=p?.note||'';
+  $('#pHab').value=p?(p.hab?'1':'0'):'1';$('#pChk').checked=!!p?.chk;$('#pGen').checked=!!p?.gen;
+  $('#pPick').innerHTML=pickHTML('pt',p?p.t:(pre?.t||defaultT()));$('#pPickW').style.display=p?.gen?'none':'';
+  $('#pDel').style.display=p?'':'none';$('#mPart').classList.add('open');$('#pRef').focus();
+}
+$('#pGen').onchange=e=>{$('#pPickW').style.display=e.target.checked?'none':''};
+$('#btnPart').onclick=()=>openPart();
+$('#fPart').addEventListener('submit',e=>{
+  e.preventDefault();if(!isAuth())return;
+  const ref=$('#pRef').value.trim(),gen=$('#pGen').checked,t=gen?[]:readPick('pt'),type=$('#pType').value.trim();
+  ensureType(type);
+  const dup=S.parts.find(p=>normRef(p.ref)===normRef(ref)&&p.id!==editId);
+  if(dup){
+    if(!confirm(`La referencia ${dup.ref} ya existe. ¿Fusionar con la existente?`))return;
+    addT(dup,t);if(editId)S.parts=S.parts.filter(p=>p.id!==editId);
+    dup.name=$('#pName').value.trim()||dup.name;dup.type=type||dup.type;
+  }else{
+    const d={ref,type,name:$('#pName').value.trim(),note:$('#pNote').value.trim(),hab:$('#pHab').value==='1',chk:$('#pChk').checked,gen,t};
+    if(editId)Object.assign(P(editId),d);else S.parts.push({id:uid(),...d});
+  }
+  save();closeModals();render();toast('Guardado');
+});
+$('#pDel').onclick=()=>{if(editId&&confirm('¿Borrar esta referencia?')){S.parts=S.parts.filter(p=>p.id!==editId);save();closeModals();render()}};
+
+/* ================= varias ================= */
+$('#btnBulk').onclick=()=>{if(!isAuth())return;resetFilters();$('#bTxt').value='';$('#bType').value='';$('#bPick').innerHTML=pickHTML('bt',defaultT());$('#mBulk').classList.add('open');$('#bTxt').focus()};
+$('#fBulk').addEventListener('submit',e=>{
+  e.preventDefault();const t=readPick('bt');let n=0,m=0;
+  $('#bTxt').value.split('\n').map(l=>l.trim()).filter(Boolean).forEach(l=>{
+    let ref,name='',type=$('#bType').value.trim();const sp=l.split(/\s*[;\t|]\s*|\s+-\s+/);
+    if(sp.length>1){ref=sp[0];name=sp[1]||'';if(sp[2])type=sp[2]}else{const w=l.split(/\s+/);ref=w[0];name=w.slice(1).join(' ')}
+    ensureType(type);
+    const ex=S.parts.find(p=>normRef(p.ref)===normRef(ref));
+    if(ex){addT(ex,t);if(!ex.name&&name)ex.name=name;if(!ex.type&&type)ex.type=type;m++}
+    else{S.parts.push({id:uid(),ref,type,name,note:'',hab:$('#bHab').value==='1',chk:false,gen:false,t:[...t]});n++}
+  });
+  save();closeModals();render();toast(`${n} nuevas, ${m} ampliadas`);
+});
+
+/* ================= modelo ================= */
+let editM=null;
+function fillFr(sid,cur){
+  const frs=S.groups.filter(g=>g.kind==='franja'&&g.parent===sid);
+  $('#mmFr').innerHTML='<option value="">— ninguna —</option>'+frs.map(f=>`<option value="${f.id}" ${f.id===cur?'selected':''}>${esc(f.name)}</option>`).join('');
+}
+function openModel(m){
+  if(!isAuth())return;editM=m?m.id:null;
+  $('#mmTitle').textContent=m?'Editar modelo':'Nuevo modelo';
+  $('#mmName').value=m?.name||'';$('#mmCodes').value=(m?.codes||[]).join(', ');$('#mmPlat').value=m?.platform||'';
+  let s=m?serieOf(m.id):(sel.k==='g'?(G(sel.id).kind==='serie'?G(sel.id):G(G(sel.id).parent)):(sel.k==='m'?serieOf(sel.id):null));
+  const series=S.groups.filter(g=>g.kind==='serie');
+  $('#mmSerie').innerHTML='<option value="">— sin serie —</option>'+series.map(g=>`<option value="${g.id}" ${s&&s.id===g.id?'selected':''}>${esc(g.name)}</option>`).join('');
+  fillFr(s?s.id:'',m?franjaOf(m.id)?.id:(sel.k==='g'&&G(sel.id).kind==='franja'?sel.id:''));
+  const cur=m?S.groups.filter(g=>g.kind==='grupo'&&g.models.includes(m.id)).map(g=>g.id):[];
+  const cg=S.groups.filter(g=>g.kind==='grupo');
+  $('#mmGroups').innerHTML=cg.length?cg.map(g=>`<label><input type="checkbox" name="mg" value="${g.id}" ${cur.includes(g.id)?'checked':''}> ${esc(g.name)}</label>`).join(''):'<span class="hint">No hay grupos libres.</span>';
+  $('#mmDel').style.display=m?'':'none';$('#mModel').classList.add('open');$('#mmName').focus();
+}
+$('#mmSerie').onchange=e=>fillFr(e.target.value,'');
+$('#btnModel').onclick=()=>openModel();
+$('#fModel').addEventListener('submit',e=>{
+  e.preventDefault();if(!isAuth())return;const name=$('#mmName').value.trim();
+  if(S.models.some(m=>m.id!==editM&&m.name.toLowerCase()===name.toLowerCase())){alert('Ya existe un modelo con ese nombre');return}
+  let m=editM&&M(editM);
+  const codes=$('#mmCodes').value.split(/[,;]/).map(x=>x.trim()).filter(Boolean),platform=$('#mmPlat').value.trim();
+  if(m){m.name=name;m.codes=codes;m.platform=platform}else{m={id:uid(),name,codes,platform};S.models.push(m);sel={k:'m',id:m.id}}
+  const sid=$('#mmSerie').value;let fid=$('#mmFr').value;
+  if(fid&&(!G(fid)||G(fid).parent!==sid))fid='';
+  const want=new Set([sid,fid,...[...document.querySelectorAll('input[name=mg]:checked')].map(i=>i.value)].filter(Boolean));
+  S.groups.forEach(g=>{const has=g.models.includes(m.id),w=want.has(g.id);if(has&&!w)g.models=g.models.filter(x=>x!==m.id);if(!has&&w)g.models.push(m.id)});
+  if(sid){exp.add(sid);exp.add('f:'+famOf(G(sid)))}
+  save();closeModals();render();toast('Guardado');
+});
+$('#mmDel').onclick=()=>{
+  if(!editM||!confirm('¿Borrar el modelo? Las referencias que solo le pertenecían pasarán a "Sin asignar".'))return;
+  S.parts.forEach(p=>p.t=p.t.filter(t=>!(t.k==='m'&&t.id===editM)));
+  S.groups.forEach(g=>g.models=g.models.filter(x=>x!==editM));S.models=S.models.filter(m=>m.id!==editM);
+  if(sel.k==='m'&&sel.id===editM)sel={k:'all',id:null};save();closeModals();render();
+};
+
+/* ================= serie / franja / grupo ================= */
+let editG=null;
+function ggToggle(){const k=$('#ggKind').value;$('#ggFamW').style.display=k==='serie'?'':'none';$('#ggParW').style.display=k==='franja'?'':'none';$('#ggColW').style.display=k==='franja'?'':'none'}
+$('#ggKind').onchange=ggToggle;
+function openGroup(g){
+  if(!isAuth())return;editG=g?g.id:null;resetFilters();
+  $('#ggTitle').textContent=g?'Editar':'Nueva serie / grupo';
+  $('#ggName').value=g?.name||'';$('#ggKind').value=g?.kind||(sel.k==='g'&&G(sel.id).kind==='serie'?'franja':'serie');
+  $('#ggFam').value=g?.family||(sel.k==='f'&&sel.id!=='Sin familia'?sel.id:'');
+  const series=S.groups.filter(x=>x.kind==='serie'&&x.id!==editG);
+  $('#ggPar').innerHTML=series.map(x=>`<option value="${x.id}" ${(g?g.parent:sel.k==='g'?sel.id:'')===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
+  const cc=g?.color||PALETTE[0];
+  $('#ggCol').innerHTML=PALETTE.map(c=>`<label style="--c:${c}"><input type="radio" name="gc" value="${c}" ${c===cc?'checked':''}><span></span></label>`).join('');
+  const cur=g?g.models:(sel.k==='m'?[sel.id]:[]);
+  $('#ggModels').innerHTML=S.models.length?[...S.models].sort((a,b)=>cmp(a.name,b.name)).map(m=>`<label data-s="${esc((m.name+' '+(m.codes||[]).join(' ')).toLowerCase())}"><input type="checkbox" name="gm" value="${m.id}" ${cur.includes(m.id)?'checked':''}> ${esc(m.name)}</label>`).join(''):'<span class="hint">Aún no hay modelos: se pueden asignar después desde cada modelo.</span>';
+  $('#ggDel').style.display=g?'':'none';ggToggle();$('#mGroup').classList.add('open');$('#ggName').focus();
+}
+$('#btnGroup').onclick=()=>openGroup();
+$('#fGroup').addEventListener('submit',e=>{
+  e.preventDefault();if(!isAuth())return;const name=$('#ggName').value.trim(),kind=$('#ggKind').value;
+  const ms=[...document.querySelectorAll('input[name=gm]:checked')].map(i=>i.value);
+  const d={name,kind,family:kind==='serie'?$('#ggFam').value.trim():'',parent:kind==='franja'?$('#ggPar').value:'',color:kind==='franja'?(document.querySelector('input[name=gc]:checked')?.value||PALETTE[0]):'',models:ms};
+  if(kind==='franja'&&!d.parent){alert('Selecciona la serie a la que pertenece la franja');return}
+  const probe={...d,id:editG||'_'};
+  if(S.groups.some(g=>g.id!==editG&&gname(g).toLowerCase()===gname(probe).toLowerCase())){alert('Ya existe un elemento con ese nombre');return}
+  let g=editG&&G(editG);if(g)Object.assign(g,d);else{g={id:uid(),...d};S.groups.push(g);sel={k:'g',id:g.id}}
+  if(kind==='serie'){exp.add(g.id);exp.add('f:'+famOf(g))}
+  save();closeModals();render();toast('Guardado');
+});
+function dropGroup(id){
+  const g=G(id);if(!g)return;
+  S.groups.filter(x=>x.parent===id).forEach(x=>dropGroup(x.id));
+  S.parts.forEach(p=>{if(p.t.some(t=>t.k==='g'&&t.id===id)){p.t=p.t.filter(t=>!(t.k==='g'&&t.id===id));addT(p,g.models.map(m=>({k:'m',id:m})))}});
+  S.groups=S.groups.filter(x=>x.id!==id);
+}
+$('#ggDel').onclick=()=>{
+  if(!editG||!confirm('¿Borrar? Las piezas asignadas al grupo pasarán a asignarse a cada uno de sus modelos actuales (y se borrarán sus franjas).'))return;
+  dropGroup(editG);if(sel.k==='g'&&!G(sel.id))sel={k:'all',id:null};save();closeModals();render();
+};
+
+/* ================= tipos de pieza ================= */
+let tyDraft=[];
+function tyRender(){
+  const chs=['','K','C','M','Y'];
+  $('#tyRows').innerHTML=tyDraft.map((t,i)=>`<tr data-i="${i}"><td><input data-f="name" value="${esc(t.name)}"></td><td><input data-f="system" list="dlSys" value="${esc(t.system)}"></td>
+    <td><select data-f="channel">${chs.map(c=>`<option value="${c}" ${t.channel===c?'selected':''}>${c||'—'}</option>`).join('')}</select></td>
+    <td style="text-align:center"><input type="checkbox" data-f="common" ${t.common?'checked':''}></td>
+    <td><input data-f="alias" value="${esc((t.alias||[]).join(', '))}"></td>
+    <td style="white-space:nowrap"><button type="button" class="sm" data-mv="-1">↑</button> <button type="button" class="sm" data-mv="1">↓</button> <button type="button" class="sm bad" data-rm="1">✕</button></td></tr>`).join('');
+}
+function tyRead(){
+  document.querySelectorAll('#tyRows tr').forEach(tr=>{
+    const t=tyDraft[+tr.dataset.i];
+    t.name=tr.querySelector('[data-f=name]').value.trim();t.system=tr.querySelector('[data-f=system]').value.trim()||'Otros';
+    t.channel=tr.querySelector('[data-f=channel]').value;t.common=tr.querySelector('[data-f=common]').checked;
+    t.alias=tr.querySelector('[data-f=alias]').value.split(',').map(x=>x.trim()).filter(Boolean);
+  });
+}
+function openTypes(){if(!isAuth())return;tyDraft=S.types.map(t=>({...t,orig:t.name,alias:[...(t.alias||[])]}));tyRender();closeModals();$('#mTypes').classList.add('open')}
+$('#bTypes').onclick=openTypes;
+$('#tyAdd').onclick=()=>{tyRead();tyDraft.push({name:'',system:'Otros',channel:'',common:false,alias:[],orig:null});tyRender();$('#tyRows').lastElementChild.querySelector('input').focus()};
+$('#tyRows').addEventListener('click',e=>{
+  const tr=e.target.closest('tr');if(!tr)return;const i=+tr.dataset.i;
+  if(e.target.dataset.rm){tyRead();tyDraft.splice(i,1);tyRender()}
+  else if(e.target.dataset.mv){tyRead();const j=i+ +e.target.dataset.mv;if(j>=0&&j<tyDraft.length){[tyDraft[i],tyDraft[j]]=[tyDraft[j],tyDraft[i]];tyRender()}}
+});
+$('#fTypes').addEventListener('submit',e=>{
+  e.preventDefault();tyRead();
+  const names=tyDraft.map(t=>t.name);
+  if(names.some(n=>!n)){alert('Hay tipos sin nombre');return}
+  if(new Set(names.map(n=>n.toLowerCase())).size!==names.length){alert('Hay nombres de tipo repetidos');return}
+  const ren={};tyDraft.forEach(t=>{if(t.orig&&t.orig!==t.name)ren[t.orig]=t.name});
+  S.parts.forEach(p=>{if(ren[p.type])p.type=ren[p.type]});
+  S.types=tyDraft.map(({orig,...t})=>t);
+  save();closeModals();render();toast('Tipos guardados');
+});
+
+/* ================= ajustes ================= */
+$('#btnCfg').onclick=()=>{$('#cErr').textContent='';$('#fPwd').reset();$('#mCfg').classList.add('open')};
+function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
+$('#bExp').onclick=()=>download('referencias-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(S,null,2),'application/json');
+$('#bCsv').onclick=()=>{
+  const c=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  buildMO();
+  download('referencias.csv','﻿'+['Referencia','Tipo','Sistema','Descripción','Modelos','Uso','Verificar','Notas'].map(c).join(';')+'\n'+
+    S.parts.map(p=>[p.ref,p.type,sysOf(p.type),p.name,p.gen?'General':[...mo(p)].map(id=>M(id).name).join(', '),p.hab?'Habitual':'Poco habitual',p.chk?'Sí':'',p.note].map(c).join(';')).join('\n'),'text/csv');
+};
+$('#bImp').onclick=()=>$('#fImp').click();
+$('#fImp').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{const d=JSON.parse(await f.text());if(!Array.isArray(d.models)||!Array.isArray(d.groups)||!Array.isArray(d.parts))throw 0;
+    if(!confirm(`Se reemplazarán los datos actuales (${d.models.length} modelos, ${d.parts.length} referencias). ¿Continuar?`))return;
+    S=d;if(!Array.isArray(S.types)||!S.types.length)S.types=defTypes();sel={k:'all',id:null};selRef=null;save();closeModals();render();toast('Importado')}catch{alert('Archivo no válido')}
+  e.target.value='';
+};
+$('#bReset').onclick=()=>{if(!confirm('Se borrarán todos los modelos, series y referencias (los tipos de pieza se conservan). ¿Continuar?'))return;S.models=[];S.groups=[];S.parts=[];sel={k:'all',id:null};selRef=null;exp=new Set();save();closeModals();render();toast('Inventario vaciado')};
+$('#bDiscard').onclick=async()=>{
+  if(!editing||!confirm('Se perderán los cambios no publicados. ¿Continuar?'))return;
+  try{
+    if(mode==='gh'){const rem=await ghRemote();S=rem.data||emptyData();baseSha=rem.sha}
+    else{await loadPublished()}
+    dirty=false;try{localStorage.removeItem(K.draft)}catch{}
+    sel={k:'all',id:null};selRef=null;closeModals();applyAuth();toast('Cambios descartados');
+  }catch(err){alert(err.message)}
+};
+
+/* ================= inicio ================= */
+(async function boot(){
+  loadErr=!(await loadPublished());
+  const tok=sessionStorage.getItem(K.tok)||localStorage.getItem(K.tok),repo=localStorage.getItem(K.repo)||detectRepo();
+  if(tok&&repo){try{await loginGH(repo,tok,null,true)}catch{clearTok();editing=false}}
+  applyAuth();
+})();
+</script>
+</body>
+</html>
