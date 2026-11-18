@@ -1,6 +1,6 @@
 // Carga de datos publicados, sesión de editor con token de GitHub y publicación de data.json.
 
-import { st, K, migrate, emptyData, resetUndo, persist, readDraft } from './store.js';
+import { st, K, VERSION, migrate, emptyData, resetUndo, persist, readDraft } from './store.js';
 import { lsDel } from './util.js';
 
 const API = 'https://api.github.com';
@@ -120,9 +120,9 @@ export async function logout() {
 
 /** Resumen de diferencias entre la versión publicada y la actual. */
 export function diffLines(a, b) {
-  const nm = { parts: 'Referencias', models: 'Modelos', series: 'Series' }, out = [];
-  for (const k of ['parts', 'models', 'series']) {
-    const A = new Map(a[k].map(x => [x.id, JSON.stringify(x)])), B = new Map(b[k].map(x => [x.id, JSON.stringify(x)]));
+  const nm = { parts: 'Referencias', models: 'Modelos', series: 'Series', tech: 'Técnico' }, out = [];
+  for (const k of ['parts', 'models', 'series', 'tech']) {
+    const A = new Map((a[k] || []).map(x => [x.id, JSON.stringify(x)])), B = new Map(b[k].map(x => [x.id, JSON.stringify(x)]));
     let add = 0, del = 0, mod = 0;
     B.forEach((v, id) => { if (!A.has(id)) add++; else if (A.get(id) !== v) mod++; });
     A.forEach((v, id) => { if (!B.has(id)) del++; });
@@ -133,12 +133,13 @@ export function diffLines(a, b) {
     if (w.length) out.push(nm[k] + ': ' + w.join(', '));
   }
   if (JSON.stringify(a.types) !== JSON.stringify(b.types)) out.push('Tipos de pieza modificados');
+  if (JSON.stringify(a.config || {}) !== JSON.stringify(b.config || {})) out.push('Correo de avisos modificado');
   return out;
 }
 
 /** Publica data.json. Devuelve 'ok' o 'conflict'; lanza Error con mensaje para otros fallos. */
 export async function publish(message) {
-  st.D.version = 6; st.D.updated = new Date().toISOString();
+  st.D.version = VERSION; st.D.updated = new Date().toISOString();
   const body = { message: message || 'Actualización de referencias', content: b64(JSON.stringify(st.D, null, 1)) };
   if (st.baseSha) body.sha = st.baseSha;
   let r;

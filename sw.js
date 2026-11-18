@@ -1,5 +1,5 @@
 // Service worker: la red primero (siempre la versión más reciente) y la caché como respaldo sin conexión.
-const V = 'refcom-v2';
+const V = 'refcom-v3';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/util.js', 'js/store.js', 'js/github.js', 'js/views.js', 'js/forms.js', 'js/inv.js',
   'data.json', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });

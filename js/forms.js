@@ -1,12 +1,12 @@
 // Diálogos del editor: serie, modelo, pieza, alta masiva, importar tabla, tipos, sesión y publicación.
 
-import { $, $$, esc, uid, cmp, nrm, cleanRef, parseTable, csvLine, download, isUrl, toast } from './util.js';
+import { $, $$, esc, uid, cmp, nrm, cleanRef, parseTable, csvLine, download, isUrl, toast, lsSet } from './util.js';
 import {
-  st, ix, M, SR, P, serieOf, mo, partByRef, originOf, sysOf, sIdx, tIdx, modelsOfSerie, categories,
+  st, K, ix, M, SR, P, TECH, serieOf, mo, partByRef, originOf, sysOf, sIdx, tIdx, modelsOfSerie, categories,
   ensureType, addT, setSerie, newModel, save, undo, migrate, emptyData
 } from './store.js';
 import { login, enterLocal, localOK, savedRepo, publish, diffLines, discard, logout, historyUrl } from './github.js';
-import { reviewData, blocking } from './views.js';
+import { reviewData, blocking, mine, UI } from './views.js';
 
 let refresh = () => {};
 export const setRefresh = fn => { refresh = fn; };
@@ -171,6 +171,7 @@ export function partForm(p, preset) {
     <div class="sug" hidden></div>
     ${fld('Descripción', `<input name="name" value="${esc(p?.name || '')}">`)}
     ${fld('Notas', `<input name="note" value="${esc(p?.note || '')}">`)}
+    ${fld('Sustituye a (referencias anteriores, separadas por coma)', `<input name="old" value="${esc((p?.old || []).join(', '))}" autocapitalize="characters" spellcheck="false" placeholder="Opcional">`)}
     <div class="checks"><label class="sw"><input type="checkbox" name="hab" ${p && !p.hab ? '' : 'checked'}><span>Habitual</span></label>
     <label class="sw"><input type="checkbox" name="chk" ${p?.chk ? 'checked' : ''}><span>Por verificar</span></label>
     <label class="sw"><input type="checkbox" name="gen" ${p?.gen ? 'checked' : ''}><span>General (sin modelo)</span></label></div>
@@ -209,10 +210,11 @@ export function partForm(p, preset) {
       const t = gen ? [] : readPick(f, 'pt');
       if (!gen && !t.length && !confirm('No has marcado ningún modelo ni serie: quedará en «Sin asignar». ¿Guardar igualmente?')) return false;
       ensureType(type);
-      const d = { ref, type, name: val(f, 'name'), note: val(f, 'note'), hab: f.elements.hab.checked, chk: f.elements.chk.checked, gen, t };
+      const old = [...new Set(val(f, 'old').split(/[,;\n]+/).map(cleanRef).filter(r => r && nrm(r) !== nrm(ref)))];
+      const d = { ref, type, name: val(f, 'name'), note: val(f, 'note'), hab: f.elements.hab.checked, chk: f.elements.chk.checked, gen, old, t };
       const dup = st.D.parts.find(x => nrm(x.ref) === nrm(ref) && x.id !== p?.id);
       if (dup) {
-        addT(dup, t); dup.name = d.name || dup.name; dup.type = type || dup.type; dup.note = d.note || dup.note;
+        addT(dup, t); dup.old = [...new Set([...dup.old, ...old])]; dup.name = d.name || dup.name; dup.type = type || dup.type; dup.note = d.note || dup.note;
         if (p) st.D.parts = st.D.parts.filter(x => x.id !== p.id);
       } else if (p) Object.assign(P(p.id), d);
       else st.D.parts.push({ id: uid(), ...d });
@@ -246,7 +248,7 @@ export function bulkForm(preset) {
         ensureType(type);
         const ex = st.D.parts.find(p => nrm(p.ref) === nrm(ref));
         if (ex) { addT(ex, t); if (!ex.name && name) ex.name = name; if (!ex.type && type) ex.type = type; m++; }
-        else { st.D.parts.push({ id: uid(), ref, type, name, note: '', hab: f.elements.hab.checked, chk: false, gen: false, t: [...t] }); n++; }
+        else { st.D.parts.push({ id: uid(), ref, type, name, note: '', hab: f.elements.hab.checked, chk: false, gen: false, old: [], t: [...t] }); n++; }
       });
       changed(`${n} nuevas, ${m} ampliadas`);
     }
@@ -255,11 +257,11 @@ export function bulkForm(preset) {
 
 /* ---------- IMPORTAR TABLA / EXPORTAR CSV ---------- */
 
-export const FLAT_H = ['Serie', 'Categoría', 'Modelo', 'Códigos', 'Plataforma', 'Franja', 'Despiece', 'Sistema', 'Tipo', 'Referencia', 'Descripción', 'Uso', 'Notas', 'Verificar'];
+export const FLAT_H = ['Serie', 'Categoría', 'Modelo', 'Códigos', 'Plataforma', 'Franja', 'Despiece', 'Sistema', 'Tipo', 'Referencia', 'Descripción', 'Uso', 'Notas', 'Verificar', 'Sustituye a'];
 export function exportCsv(modelIds, name) {
   const only = modelIds ? new Set(modelIds) : null, rows = [];
   st.D.parts.forEach(p => {
-    const tail = [sysOf(p.type), p.type, p.ref, p.name, p.hab ? 'Habitual' : 'Poco habitual', p.note, p.chk ? 'Sí' : ''];
+    const tail = [sysOf(p.type), p.type, p.ref, p.name, p.hab ? 'Habitual' : 'Poco habitual', p.note, p.chk ? 'Sí' : '', p.old.join(', ')];
     if (p.gen || !mo(p).size) { if (!only) rows.push(['', '', '', '', '', '', '', ...tail]); return; }
     mo(p).forEach(id => {
       if (only && !only.has(id)) return;
@@ -273,7 +275,7 @@ export function exportCsv(modelIds, name) {
 }
 
 function importRows(rows, create) {
-  const MAP = { serie: 'serie', categoria: 'cat', familia: 'cat', modelo: 'model', codigo: 'codes', codigos: 'codes', plataforma: 'plat', franja: 'franja', despiece: 'dsp', tipo: 'type', referencia: 'ref', descripcion: 'name', uso: 'uso', notas: 'note', verificar: 'chk' };
+  const MAP = { serie: 'serie', categoria: 'cat', familia: 'cat', modelo: 'model', codigo: 'codes', codigos: 'codes', plataforma: 'plat', franja: 'franja', despiece: 'dsp', tipo: 'type', referencia: 'ref', descripcion: 'name', uso: 'uso', notas: 'note', verificar: 'chk', sustituyea: 'old' };
   const hdr = rows[0].map(nrm), hasHdr = hdr.includes('referencia');
   let col = {};
   if (hasHdr) { hdr.forEach((h, i) => { const k = MAP[h]; if (k && col[k] === undefined) col[k] = i; }); rows = rows.slice(1); }
@@ -302,15 +304,16 @@ function importRows(rows, create) {
     }
     ensureType(type);
     const ex = st.D.parts.find(p => nrm(p.ref) === nrm(ref));
-    if (ex) { addT(ex, targets); if (!ex.name && g(r, 'name')) ex.name = g(r, 'name'); if (!ex.type && type) ex.type = type; res.ampliadas++; }
-    else { st.D.parts.push({ id: uid(), ref, type, name: g(r, 'name'), note: g(r, 'note'), hab: !/^poco|^ocas/i.test(g(r, 'uso')), chk: /^(s[ií]|x|1|true)$/i.test(g(r, 'chk')), gen, t: targets }); res.nuevas++; }
+    const old = g(r, 'old').split(/[,;\n]+/).map(cleanRef).filter(x => x && nrm(x) !== nrm(ref));
+    if (ex) { addT(ex, targets); ex.old = [...new Set([...ex.old, ...old])]; if (!ex.name && g(r, 'name')) ex.name = g(r, 'name'); if (!ex.type && type) ex.type = type; res.ampliadas++; }
+    else { st.D.parts.push({ id: uid(), ref, type, name: g(r, 'name'), note: g(r, 'note'), hab: !/^poco|^ocas/i.test(g(r, 'uso')), chk: /^(s[ií]|x|1|true)$/i.test(g(r, 'chk')), gen, old, t: targets }); res.nuevas++; }
   });
   return res;
 }
 
 export function tableForm() {
   openDialog('Importar tabla (Excel o CSV)', `
-    <p class="mut small">Pega filas copiadas de Excel o carga un CSV. Con cabecera se reconocen: Serie, Categoría, Modelo, Códigos, Plataforma, Franja, Despiece, Tipo, Referencia, Descripción, Uso, Notas y Verificar (es el formato de «Exportar CSV»). Sin cabecera: Modelo, Tipo, Referencia, Descripción. Una fila sin modelo es una pieza general. Solo añade o amplía; no borra nada.</p>
+    <p class="mut small">Pega filas copiadas de Excel o carga un CSV. Con cabecera se reconocen: Serie, Categoría, Modelo, Códigos, Plataforma, Franja, Despiece, Tipo, Referencia, Descripción, Uso, Notas, Verificar y Sustituye a (es el formato de «Exportar CSV»). Sin cabecera: Modelo, Tipo, Referencia, Descripción. Una fila sin modelo es una pieza general. Solo añade o amplía; no borra nada.</p>
     <textarea name="txt" rows="8" spellcheck="false" aria-label="Tabla"></textarea>
     <input type="file" name="file" accept=".csv,.tsv,.txt,text/csv,text/plain" aria-label="Archivo CSV">
     <label class="sw"><input type="checkbox" name="create" checked><span>Crear series y modelos que no existan</span></label>`, {
@@ -426,6 +429,7 @@ export function editMenu(ctx) {
     <div class="grid2">
       <button type="button" class="pri" data-m="part">+ Pieza</button><button type="button" data-m="bulk">+ Varias</button>
       <button type="button" data-m="model">+ Modelo</button><button type="button" data-m="serie">+ Serie</button>
+      <button type="button" data-m="tech">+ SC / consulta</button><button type="button" data-m="contact">Correo de avisos</button>
       <button type="button" class="ok" data-m="pub" ${st.dirty || st.mode === 'local' ? '' : 'disabled'}>${st.mode === 'local' ? 'Descargar data.json' : 'Publicar'}</button><button type="button" data-m="undo" ${st.undo.length ? '' : 'disabled'}>Deshacer</button>
       <button type="button" data-m="rev">Revisión</button><button type="button" data-m="table">Importar tabla</button>
       <button type="button" data-m="types">Tipos de pieza</button><button type="button" data-m="csv">Exportar CSV</button>
@@ -444,6 +448,8 @@ export function editMenu(ctx) {
         else if (a === 'bulk') bulkForm(pre);
         else if (a === 'model') modelForm(null, ctx.serie?.id || (ctx.model && serieOf(ctx.model.id)?.id));
         else if (a === 'serie') serieForm(null);
+        else if (a === 'tech') techForm(null, pre.length ? pre : []);
+        else if (a === 'contact') contactForm();
         else if (a === 'pub') publishForm();
         else if (a === 'undo') { if (undo()) { refresh(); toast('Cambio deshecho'); } }
         else if (a === 'rev') go('#/rev');
@@ -466,3 +472,117 @@ export function editMenu(ctx) {
   });
 }
 export { emptyData };
+
+/* ---------- MIS SERIES (cualquier usuario, por dispositivo) ---------- */
+
+export function mineForm() {
+  const cur = mine();
+  openDialog('Mis series', `<p class="mut small">Marca las series que atiendes. Inicio, vista general y técnico mostrarán primero solo estas; «Todas» sigue disponible. Se guarda en este dispositivo.</p>
+    <input type="search" class="pf" placeholder="Filtrar" aria-label="Filtrar"><div class="pick">${[...st.D.series].sort((a, b) => cmp(a.name, b.name)).map(s => `<label data-s="${esc(nrm(s.name + ' ' + s.category))}"><input type="checkbox" name="ms" value="${esc(s.id)}" ${cur.includes(s.id) ? 'checked' : ''}><span>${esc(s.name)} <small>${esc(s.category)}</small></span></label>`).join('')}</div>`, {
+    mount: bindPickFilter,
+    submit(f) {
+      const v = $$('input[name=ms]:checked', f).map(i => i.value);
+      lsSet(K.mine, v); UI.all = false; refresh(); toast(v.length ? (v.length === 1 ? "1 serie seleccionada" : `${v.length} series seleccionadas`) : 'Se muestran todas las series');
+    }
+  });
+}
+
+/* ---------- CORREO DE AVISOS (editor) ---------- */
+
+export function contactForm() {
+  openDialog('Correo de avisos', `<p class="mut small">Dirección a la que llegan los avisos del botón «Avisar de un error». Se publica en data.json, visible para quien abra la web. Si se deja vacío, el aviso se comparte o se copia para enviarlo por Teams.</p>
+    ${fld('Correo', `<input name="mail" type="email" inputmode="email" value="${esc(st.D.config.contacto)}" placeholder="nombre@empresa.com">`)}`, {
+    submit(f) {
+      const v = val(f, 'mail');
+      if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) throw new Error('Correo no válido');
+      st.D.config.contacto = v; changed('Guardado');
+    }
+  });
+}
+
+/* ---------- SC Y CONSULTAS TÉCNICAS ---------- */
+
+export function techForm(x, preset, kind) {
+  const k = x?.kind || kind || 'sc';
+  openDialog(x ? 'Editar entrada técnica' : 'Nueva entrada técnica', `
+    <div class="seg" role="radiogroup" aria-label="Tipo"><label class="${k === 'sc' ? 'on' : ''}"><input type="radio" name="kind" value="sc" ${k === 'sc' ? 'checked' : ''} class="vh">Código SC</label><label class="${k === 'guia' ? 'on' : ''}"><input type="radio" name="kind" value="guia" ${k === 'guia' ? 'checked' : ''} class="vh">Consulta</label></div>
+    <div class="two">${fld('Código SC', `<input name="code" value="${esc(x?.code || '')}" placeholder="SC542" autocapitalize="characters" spellcheck="false">`, 'codef')}
+    ${fld('Título', `<input name="title" required value="${esc(x?.title || '')}" placeholder="Error de temperatura del fusor / Acceso a modo SP">`)}</div>
+    ${fld('<span class="lc">Causas posibles</span> (una por línea)', `<textarea name="causes" rows="4">${esc(x?.causes || '')}</textarea>`)}
+    ${fld('<span class="ls">Solución</span> (un paso por línea)', `<textarea name="steps" rows="6">${esc(x?.steps || '')}</textarea>`)}
+    ${fld('Piezas relacionadas (referencias separadas por coma)', `<input name="refs" value="${esc((x?.refs || []).join(', '))}" autocapitalize="characters" spellcheck="false">`)}
+    ${fld('Notas', `<textarea name="note" rows="3">${esc(x?.note || '')}</textarea>`)}
+    <div class="fld"><span>Aplica a (sin marcar: todos los equipos)</span>${picker('tt', x ? x.t : (preset || []))}</div>`, {
+    wide: true,
+    extra: x ? '<button type="button" class="ghost bad" data-del>Borrar</button>' : '',
+    mount(f) {
+      bindPickFilter(f);
+      const sync = () => {
+        const sc = f.elements.kind.value === 'sc';
+        $$('.seg label', f).forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
+        $('.codef', f).hidden = !sc;
+        $('.lc', f).textContent = sc ? 'Causas posibles' : 'Cuándo aplica';
+        $('.ls', f).textContent = sc ? 'Solución' : 'Pasos';
+      };
+      f.addEventListener('change', e => { if (e.target.name === 'kind') sync(); });
+      sync();
+      $('[data-del]', f)?.addEventListener('click', () => {
+        if (!confirm('¿Borrar esta entrada?')) return;
+        st.D.tech = st.D.tech.filter(y => y.id !== x.id); close(); changed('Entrada borrada'); location.hash = '#/tec/' + x.kind;
+      });
+    },
+    submit(f) {
+      const kd = f.elements.kind.value === 'guia' ? 'guia' : 'sc';
+      let code = kd === 'sc' ? val(f, 'code').toUpperCase().replace(/\s+/g, '') : '';
+      if (kd === 'sc' && code && /^\d/.test(code)) code = 'SC' + code;
+      if (kd === 'sc' && !code) throw new Error('Indica el código SC');
+      const d = { kind: kd, code, title: val(f, 'title'), causes: f.elements.causes.value.trim(), steps: f.elements.steps.value.trim(), note: f.elements.note.value.trim(),
+        refs: [...new Set(val(f, 'refs').split(/[,;\n]+/).map(cleanRef).filter(Boolean))], t: readPick(f, 'tt') };
+      let y = x && TECH(x.id);
+      if (y) Object.assign(y, d); else { y = { id: uid(), ...d }; st.D.tech.push(y); }
+      changed('Entrada guardada'); location.hash = '#/t/' + encodeURIComponent(y.id);
+    }
+  });
+}
+
+const TECH_H = ['Tipo', 'Código', 'Título', 'Serie', 'Modelo', 'Causas', 'Solución', 'Piezas', 'Notas'];
+export function exportTechCsv() {
+  const rows = st.D.tech.map(x => [x.kind === 'sc' ? 'SC' : 'Consulta', x.code, x.title,
+    x.t.filter(t => t.k === 's').map(t => SR(t.id)?.name).filter(Boolean).join(', '),
+    x.t.filter(t => t.k === 'm').map(t => M(t.id)?.name).filter(Boolean).join(', '),
+    x.causes, x.steps, x.refs.join(', '), x.note]);
+  download('tecnico.csv', '﻿' + [TECH_H, ...rows].map(csvLine).join('\n'), 'text/csv');
+  toast(rows.length + ' entradas exportadas');
+}
+export function techTableForm() {
+  openDialog('Importar SC y consultas', `<p class="mut small">Pega desde Excel o carga un CSV con cabecera: Tipo (SC o Consulta), Código, Título, Serie, Modelo, Causas, Solución, Piezas, Notas. Varias series o modelos separados por coma; vacío = todos los equipos. En Causas y Solución, cada línea de la celda es un punto (Alt+Intro en Excel). Si el código SC ya existe con los mismos destinos, se actualiza.</p>
+    <textarea name="txt" rows="8" spellcheck="false" aria-label="Tabla"></textarea>
+    <input type="file" name="file" accept=".csv,.tsv,.txt,text/csv,text/plain" aria-label="Archivo CSV">`, {
+    wide: true, label: 'Importar',
+    mount(f) { f.elements.file.addEventListener('change', e => { const x = e.target.files[0]; if (!x) return; const rd = new FileReader(); rd.onload = () => { f.elements.txt.value = rd.result; }; rd.readAsText(x); }); },
+    submit(f) {
+      const rows = parseTable(f.elements.txt.value);
+      if (rows.length < 2) throw new Error('Hace falta la fila de cabecera y al menos una fila');
+      const MAP = { tipo: 'kind', codigo: 'code', titulo: 'title', serie: 'serie', series: 'serie', modelo: 'model', modelos: 'model', causas: 'causes', solucion: 'steps', pasos: 'steps', piezas: 'refs', notas: 'note' };
+      const col = {}; rows[0].map(nrm).forEach((h, i) => { if (MAP[h] && col[MAP[h]] === undefined) col[MAP[h]] = i; });
+      if (col.title === undefined && col.code === undefined) throw new Error('No se reconoce la cabecera (falta Título o Código)');
+      const g = (r, k) => (col[k] === undefined ? '' : String(r[col[k]] ?? '').trim());
+      let n = 0, u = 0; const miss = new Set();
+      rows.slice(1).forEach(r => {
+        const kind = /^consulta|^gu[ií]a|^proc/i.test(g(r, 'kind')) ? 'guia' : (g(r, 'code') || /^sc/i.test(g(r, 'kind')) ? 'sc' : 'guia');
+        let code = kind === 'sc' ? g(r, 'code').toUpperCase().replace(/\s+/g, '') : '';
+        if (code && /^\d/.test(code)) code = 'SC' + code;
+        const title = g(r, 'title') || code; if (!title) return;
+        const t = [];
+        g(r, 'serie').split(/[,;]/).map(x => x.trim()).filter(Boolean).forEach(nm => { const s = st.D.series.find(x => nrm(x.name) === nrm(nm)); s ? t.push({ k: 's', id: s.id }) : miss.add(nm); });
+        g(r, 'model').split(/[,;]/).map(x => x.trim()).filter(Boolean).forEach(nm => { const m = st.D.models.find(x => nrm(x.name) === nrm(nm)); m ? t.push({ k: 'm', id: m.id }) : miss.add(nm); });
+        const d = { kind, code, title, causes: g(r, 'causes'), steps: g(r, 'steps'), note: g(r, 'note'), refs: [...new Set(g(r, 'refs').split(/[,;\n]+/).map(cleanRef).filter(Boolean))], t };
+        const key = x => x.kind + '|' + (x.code || nrm(x.title)) + '|' + x.t.map(y => y.k + y.id).sort().join(',');
+        const ex = st.D.tech.find(x => key(x) === key(d));
+        if (ex) { Object.assign(ex, d); u++; } else { st.D.tech.push({ id: uid(), ...d }); n++; }
+      });
+      changed(`${n} entradas nuevas, ${u} actualizadas`);
+      if (miss.size) alert('No existen (se ignoraron como destino): ' + [...miss].slice(0, 10).join(', '));
+    }
+  });
+}

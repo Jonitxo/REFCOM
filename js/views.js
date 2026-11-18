@@ -3,7 +3,7 @@
 import { esc, fmtRef, cmp, nrm, color, franjaColor, lsGet, isUrl } from './util.js';
 import {
   st, K, ix, M, SR, TY, serieOf, mo, partsOf, partByRef, tIdx, sIdx, sysOf, chOf, colsOf, byTypeRef,
-  modelsOfSerie, isCommon, originOf, despieceOf, categories
+  modelsOfSerie, isCommon, originOf, despieceOf, categories, supersededBy, techOf, techMo
 } from './store.js';
 import { LISTS, invGet, invQtyOf } from './inv.js';
 
@@ -17,7 +17,10 @@ const ed = () => st.editing;
 export const refBtn = (ref, cls = '') =>
   `<button type="button" class="ref ${cls}" data-copy="${esc(ref)}" aria-label="Copiar referencia ${esc(ref)}">${fmtRef(ref)}</button>`;
 const typeTag = t => { const ch = chOf(t); return `<span class="tt ${ch ? 'ch-' + ch : ''}">${esc(t || 'Sin tipo')}</span>`; };
-const badges = p => (p.hab ? '' : '<span class="bd o">poco habitual</span>') + (p.chk ? '<span class="bd w">verificar</span>' : '');
+const badges = p => { const n = supersededBy(p.ref); return (n ? `<a class="bd w" href="${linkR(n.ref)}">sustituida por ${esc(n.ref)}</a>` : '') + (p.hab ? '' : '<span class="bd o">poco habitual</span>') + (p.chk ? '<span class="bd w">verificar</span>' : ''); };
+const oldNote = p => (p.old.length ? `<span>Sustituye a ${p.old.map(esc).join(', ')}</span>` : '');
+/** Botón «Avisar»: abre un correo (o compartir) con el contexto ya escrito. */
+export const reportBtn = (subject, body) => `<button type="button" class="sm ghost" data-report="${esc(subject)}" data-body="${esc(body)}">Avisar de un error</button>`;
 const frTag = f => (f ? `<span class="fr" style="--c:${franjaColor(f)}">${esc(f)}</span>` : '');
 const codes = m => (m.codes.length ? `<span class="code">${esc(m.codes.join(' / '))}</span>` : '');
 export const pl = (n, a, b) => n + ' ' + (n === 1 ? a : b);
@@ -57,12 +60,24 @@ const has = (f, t, nt) => { f = String(f || ''); return f.toLowerCase().includes
 const matchAll = (fields, terms) => terms.every(t => { const nt = nrm(t); return fields.some(f => has(f, t, nt)); });
 export function partMatches(p, terms) {
   if (!terms.length) return true;
-  const f = [p.ref, p.name, p.type, p.note];
+  const f = [p.ref, p.name, p.type, p.note, ...p.old];
   if (terms.length > 1) mo(p).forEach(id => { const m = M(id); if (m) f.push(m.name, m.platform, ...m.codes, serieOf(id)?.name); });
   return matchAll(f, terms);
 }
 const modelMatches = (m, terms) => matchAll([m.name, m.platform, m.franja, ...m.codes, serieOf(m.id)?.name], terms);
 const serieMatches = (s, terms) => matchAll([s.name, s.category], terms);
+const techMatches = (x, terms) => matchAll([x.code, x.code.replace(/^SC/i, ''), x.title, x.causes, x.steps, x.note, ...x.refs], terms);
+
+/* ---------- mis series (por dispositivo) ---------- */
+
+export const mine = () => { const v = lsGet(K.mine, []); return Array.isArray(v) ? v.filter(id => ix.S.has(id)) : []; };
+export const UI = { all: false };   // «Todas» frente a «Mis series»
+const mineFilter = s => { const m = mine(); return UI.all || !m.length || m.includes(s.id); };
+function mineBar() {
+  const m = mine();
+  if (!m.length) return st.D.series.length > 1 ? `<p class="small"><button type="button" class="sm ghost" data-act="mine">Elegir mis series</button> <span class="mut">para ver solo las que atiendes</span></p>` : '';
+  return `<div class="seg" role="group" aria-label="Series visibles"><button type="button" class="${UI.all ? '' : 'on'}" data-all="0">Mis series <small>${m.length}</small></button><button type="button" class="${UI.all ? 'on' : ''}" data-all="1">Todas</button><button type="button" data-act="mine" aria-label="Elegir mis series">Elegir…</button></div>`;
+}
 
 /* ---------- filtros ---------- */
 
@@ -87,7 +102,8 @@ export function homeView(cat) {
       ed() ? `<ol class="steps"><li><b>Serie</b>: «Editar» → «+ Serie» (p. ej. METIS MF4).</li><li><b>Modelos</b>: dentro de la serie, «+ Modelo» con nombre y código (IM C2010 · D0DY).</li><li><b>Piezas</b>: en el modelo, «+ Pieza»; o «Importar tabla» desde Excel.</li></ol>` : '');
   }
   if (cats.length > 1) h += `<div class="seg scroll" role="group" aria-label="Categoría">${['', ...cats].map(c => `<button type="button" class="${(cat || '') === c ? 'on' : ''}" data-cat="${esc(c)}">${esc(c || 'Todas')}</button>`).join('')}</div>`;
-  const series = D.series.filter(s => !cat || s.category === cat).sort((a, b) => cmp(a.name, b.name));
+  h += mineBar();
+  const series = D.series.filter(s => (!cat || s.category === cat) && mineFilter(s)).sort((a, b) => cmp(a.name, b.name));
   h += `<section class="blk"><h2 class="h">Series <span class="mut">${series.length}</span></h2><div class="cards">` + series.map(s => {
     const ms = modelsOfSerie(s), n = new Set(ms.flatMap(m => partsOf(m.id).map(p => p.id))).size;
     return `<a class="card" href="${linkS(s)}" style="--c:${color(s.name)}"><div class="card-h"><b>${esc(s.name)}</b>${s.category ? `<span class="cat">${esc(s.category)}</span>` : ''}</div><div class="card-m">${ms.map(m => `<span>${esc(m.name)}${m.codes.length ? ' <small>' + esc(m.codes[0]) + '</small>' : ''}</span>`).join('') || '<span class="mut">Sin modelos</span>'}</div><div class="card-f">${ms.length} modelo${ms.length === 1 ? '' : 's'} · ${n} referencia${n === 1 ? '' : 's'}</div></a>`;
@@ -130,27 +146,32 @@ export function modelView(m) {
     <div class="crumb">${s ? `<a href="${linkS(s)}">${esc(s.name)}</a>` : '<span>Sin serie</span>'}${m.franja ? ' · ' + frTag(m.franja) : ''}</div>
     <h1>${esc(m.name)}</h1>
     <div class="ids">${m.codes.length ? `<div><span>Código</span><b>${esc(m.codes.join(' / '))}</b></div>` : ''}${m.platform ? `<div><span>Plataforma</span><b>${esc(m.platform)}</b></div>` : ''}<div><span>Referencias</span><b>${all.length}</b></div></div>
-    <div class="acts">${dsp && isUrl(dsp) ? `<a class="btn pri" href="${esc(dsp)}" target="_blank" rel="noopener">Despiece</a>` : ''}<button type="button" class="sm ghost ${fv ? 'on' : ''}" data-fav="m" data-id="${esc(m.id)}" aria-pressed="${fv}">${fv ? '★ Favorito' : '☆ Favorito'}</button><button type="button" class="sm ghost" data-act="share">Enlace</button>${editBtn('editModel', m.id)}${ed() ? `<button type="button" class="sm ghost" data-act="newPart" data-id="m:${esc(m.id)}">+ Pieza</button>` : ''}</div></header>`;
-  if (!all.length) return h + empty('Sin referencias para este modelo.' + (ed() ? ' Usa «+ Pieza».' : ''));
+    <div class="acts">${dsp && isUrl(dsp) ? `<a class="btn pri" href="${esc(dsp)}" target="_blank" rel="noopener">Despiece</a>` : ''}<button type="button" class="sm ghost ${fv ? 'on' : ''}" data-fav="m" data-id="${esc(m.id)}" aria-pressed="${fv}">${fv ? '★ Favorito' : '☆ Favorito'}</button><button type="button" class="sm ghost" data-act="share">Enlace</button>${reportBtn('Referencias ' + m.name, `Modelo: ${m.name}${m.codes.length ? ' (' + m.codes.join(' / ') + ')' : ''}\nEnlace: ${location.origin + location.pathname + linkM(m)}\n\nFalta o error: `)}${editBtn('editModel', m.id)}${ed() ? `<button type="button" class="sm ghost" data-act="newPart" data-id="m:${esc(m.id)}">+ Pieza</button>` : ''}</div></header>`;
+  const tech = techOf(m.id);
+  const techBlk = tech.length || ed() ? `<section class="blk" id="tec"><h2 class="h">Técnico <span class="mut">${tech.length}</span></h2>${tech.length ? techRows(tech) : ''}${ed() ? `<button type="button" class="sm ghost" data-act="newTech" data-id="m:${esc(m.id)}">+ SC o consulta</button>` : ''}</section>` : '';
+  if (!all.length) return h + empty('Sin referencias para este modelo.' + (ed() ? ' Usa «+ Pieza».' : '')) + techBlk;
   const bySys = new Map();
   list.forEach(p => { const k = sysOf(p.type); (bySys.get(k) || bySys.set(k, []).get(k)).push(p); });
   const systems = [...bySys.keys()].sort((a, b) => ix.sys.indexOf(a) - ix.sys.indexOf(b));
-  if (systems.length > 1) h += `<div class="jump scroll">${systems.map((x, i) => `<button type="button" data-jump="sys${i}">${esc(x)} <small>${bySys.get(x).length}</small></button>`).join('')}</div>`;
+  if (systems.length > 1 || tech.length) h += `<div class="jump scroll">${systems.map((x, i) => `<button type="button" data-jump="sys${i}">${esc(x)} <small>${bySys.get(x).length}</small></button>`).join('')}${tech.length ? `<button type="button" data-jump="tec">Técnico <small>${tech.length}</small></button>` : ''}</div>`;
   h += filtersHTML(false);
-  if (!list.length) return h + empty('Ninguna referencia con el filtro actual.');
-  return h + systems.map((x, i) => `<section class="blk" id="sys${i}"><h2 class="h">${esc(x)}</h2><div class="parts">${bySys.get(x).map(p => partCard(p, m, s)).join('')}</div></section>`).join('');
+  if (!list.length) return h + empty('Ninguna referencia con el filtro actual.') + techBlk;
+  return h + systems.map((x, i) => `<section class="blk" id="sys${i}"><h2 class="h">${esc(x)}</h2><div class="parts">${bySys.get(x).map(p => partCard(p, m, s)).join('')}</div></section>`).join('') + techBlk;
 }
 
 function partCard(p, m, s) {
   const others = [...mo(p)].filter(id => id !== m?.id).length;
-  const meta = [originNote(p, m?.id), others ? `<a href="${linkR(p.ref)}">Compartida con ${others} modelo${others > 1 ? 's' : ''}</a>` : '', s && isCommon(p, s) ? '<span>Común a la serie</span>' : ''].filter(Boolean).join(' · ');
+  const meta = [originNote(p, m?.id), oldNote(p), others ? `<a href="${linkR(p.ref)}">Compartida con ${others} modelo${others > 1 ? 's' : ''}</a>` : '', s && isCommon(p, s) ? '<span>Común a la serie</span>' : ''].filter(Boolean).join(' · ');
   return `<article class="pc"><div class="pc-h">${typeTag(p.type)}${badges(p)}</div>${refBtn(p.ref, 'big')}${p.name || p.note ? `<div class="pc-d">${esc(p.name)}${p.name && p.note ? ' · ' : ''}<span class="mut">${esc(p.note)}</span></div>` : ''}${meta ? `<div class="pc-m">${meta}</div>` : ''}<div class="pc-a">${invBtn('pedir', p.ref)}${invBtn('tengo', p.ref)}<a class="sm ghost btn" href="${linkR(p.ref)}">Detalle</a>${editBtn('editPart', p.id)}</div></article>`;
 }
 
 /* ---------- REFERENCIA ---------- */
 
 export function refView(ref) {
-  const p = partByRef(ref);
+  const p = partByRef(ref), nw = supersededBy(ref);
+  if (!p && nw) {
+    return `<header class="ph" style="--c:var(--warn)"><div class="crumb"><span class="bd w">sustituida</span></div><h1 class="refh">${fmtRef(ref)}</h1><div class="meta">Referencia anterior. La vigente es:</div><div class="acts"><a class="btn pri" href="${linkR(nw.ref)}">${esc(nw.ref)} · ${esc(nw.type)}</a></div></header>`;
+  }
   if (!p) {
     return `<header class="ph"><div class="crumb"><a href="#/">Series</a></div><h1 class="refh">${fmtRef(ref)}</h1><div class="meta">No está en el catálogo.</div><div class="acts"><button type="button" class="btn pri" data-copy="${esc(ref)}">Copiar</button>${invBtn('pedir', ref)}${invBtn('tengo', ref)}${invBtn('devolver', ref)}</div></header>`;
   }
@@ -164,8 +185,8 @@ export function refView(ref) {
   return `<header class="ph"><div class="crumb">${typeTag(p.type)} ${badges(p)}</div>
     <h1 class="refh">${refBtn(p.ref, 'huge')}</h1>
     ${p.name ? `<div class="pc-d big">${esc(p.name)}</div>` : ''}${p.note ? `<div class="mut">${esc(p.note)}</div>` : ''}
-    <div class="pc-m">${originNote(p)}</div>
-    <div class="acts"><button type="button" class="btn pri" data-copy="${esc(p.ref)}">Copiar</button>${invBtn('pedir', p.ref)}${invBtn('tengo', p.ref)}${invBtn('devolver', p.ref)}<button type="button" class="sm ghost ${fv ? 'on' : ''}" data-fav="p" data-id="${esc(p.id)}" aria-pressed="${fv}">${fv ? '★' : '☆'} Favorita</button>${editBtn('editPart', p.id)}</div></header>
+    <div class="pc-m">${[originNote(p), oldNote(p)].filter(Boolean).join(' · ')}</div>
+    <div class="acts"><button type="button" class="btn pri" data-copy="${esc(p.ref)}">Copiar</button>${invBtn('pedir', p.ref)}${invBtn('tengo', p.ref)}${invBtn('devolver', p.ref)}<button type="button" class="sm ghost ${fv ? 'on' : ''}" data-fav="p" data-id="${esc(p.id)}" aria-pressed="${fv}">${fv ? '★' : '☆'} Favorita</button>${reportBtn('Referencia ' + p.ref, `Referencia: ${p.ref} (${p.type})\nEnlace: ${location.origin + location.pathname + linkR(p.ref)}\n\nError detectado: `)}${editBtn('editPart', p.id)}</div></header>
     <section class="blk"><h2 class="h">${p.gen ? 'Pieza general (sin modelo)' : `Aplica a ${set.size} modelo${set.size === 1 ? '' : 's'}`}</h2>${blocks || (p.gen ? '' : empty('Sin modelos asignados'))}</section>`;
 }
 
@@ -183,11 +204,13 @@ export function searchView(q) {
   const ms = st.D.models.filter(m => modelMatches(m, t)).sort((a, b) => cmp(a.name, b.name));
   const ss = st.D.series.filter(s => serieMatches(s, t));
   const ps = st.D.parts.filter(p => partMatches(p, t) && pass(p));
-  // Una referencia exacta va directa arriba
-  const exact = partByRef(q);
+  const ts = st.D.tech.filter(x => techMatches(x, t));
+  // Una referencia exacta (o la que la sustituye) va directa arriba
+  const exact = partByRef(q) || supersededBy(q);
   let h = `<div class="meta sr">«${esc(q)}» · ${ms.length} modelos · ${ps.length} referencias</div>`;
-  if (!ms.length && !ss.length && !ps.length) return h + empty('Sin resultados. La búsqueda ignora mayúsculas, acentos, espacios y guiones.');
-  if (exact) h += `<a class="row hl" href="${linkR(exact.ref)}"><span class="rm"><b>${esc(exact.ref)}</b><span class="mut">${esc(exact.type)} ${esc(exact.name)}</span></span><span class="n">›</span></a>`;
+  if (!ms.length && !ss.length && !ps.length && !ts.length) return h + empty('Sin resultados. La búsqueda ignora mayúsculas, acentos, espacios y guiones.', reportBtn('No encuentro: ' + q, `He buscado «${q}» y no aparece.\n\nEquipo / modelo: \nQué necesitaba: `));
+  if (exact) h += `<a class="row hl" href="${linkR(exact.ref)}"><span class="rm"><b>${esc(exact.ref)}</b><span class="mut">${nrm(exact.ref) !== nrm(q) ? 'Sustituye a ' + esc(q.toUpperCase()) + ' · ' : ''}${esc(exact.type)} ${esc(exact.name)}</span></span><span class="n">›</span></a>`;
+  if (ts.length) h += `<section class="blk"><h2 class="h">Técnico</h2>${techRows(ts.slice(0, 20))}</section>`;
   if (ss.length) h += `<section class="blk"><h2 class="h">Series</h2><div class="list">${ss.map(s => `<a class="row" href="${linkS(s)}"><span class="rm"><b>${esc(s.name)}</b><span class="mut">${esc(s.category)}</span></span><span class="n">${s.models.length}</span></a>`).join('')}</div></section>`;
   if (ms.length) h += `<section class="blk"><h2 class="h">Modelos</h2><div class="list">${ms.slice(0, 30).map(modelRow).join('')}</div></section>`;
   if (ps.length) h += `<section class="blk"><h2 class="h">Referencias</h2>${filtersHTML()}${partRows(ps)}</section>`;
@@ -219,10 +242,11 @@ function overviewSerie(s, ms, collapsible = true) {
 
 export function overviewView(cat) {
   const cats = categories();
-  let h = `<header class="ph"><h1>Vista general</h1><div class="meta">Todos los modelos y sus referencias. Toca una referencia para copiarla.</div><div class="acts"><button type="button" class="sm ghost" data-ovall="1">Desplegar todo</button><button type="button" class="sm ghost" data-ovall="0">Plegar todo</button></div></header>`;
+  let h = `<header class="ph"><h1>Vista general</h1><div class="meta">Todos los modelos y sus referencias. Toca una referencia para copiarla.</div><div class="acts"><button type="button" class="sm ghost" data-ovall="1">Desplegar todo</button><button type="button" class="sm ghost" data-ovall="0">Plegar todo</button></div></header><!--mine-->`;
   if (cats.length > 1) h += `<div class="seg scroll" role="group" aria-label="Categoría">${['', ...cats].map(c => `<button type="button" class="${(cat || '') === c ? 'on' : ''}" data-cat="${esc(c)}">${esc(c || 'Todas')}</button>`).join('')}</div>`;
   h += filtersHTML();
-  const series = st.D.series.filter(s => !cat || s.category === cat).sort((a, b) => cmp(a.name, b.name));
+  const series = st.D.series.filter(s => (!cat || s.category === cat) && mineFilter(s)).sort((a, b) => cmp(a.name, b.name));
+  h = h.replace('<!--mine-->', mineBar());
   h += series.map(s => overviewSerie(s, modelsOfSerie(s))).join('');
   const free = st.D.models.filter(m => !serieOf(m.id));
   if (free.length && !cat) h += overviewSerie(null, free);
@@ -274,7 +298,7 @@ export function invView(list) {
     const p = partByRef(it.ref), first = p ? [...mo(p)].map(M).filter(Boolean)[0] : null;
     const uso = list === 'tengo' ? `<button type="button" class="sm uso ${it.uso}" data-iuso="${esc(it.ref)}" aria-label="Cambiar uso">${it.uso === 'hab' ? 'Habitual' : it.uso === 'ocas' ? 'Ocasional' : 'Uso…'}</button>` : '';
     const mv = list === 'pedir' ? `<button type="button" class="sm" data-imove="pedir:tengo" data-ref="${esc(it.ref)}">Recibida</button>` : list === 'devolver' ? `<button type="button" class="sm" data-idel="devolver" data-ref="${esc(it.ref)}">Devuelta</button>` : '';
-    return `<div class="ii"><div class="ii-i">${refBtn(it.ref)}<div class="mut small">${p ? esc([p.type, p.name].filter(Boolean).join(' · ')) : 'Fuera del catálogo'}${first ? ' · ' + esc(first.name) + (mo(p).size > 1 ? ' +' + (mo(p).size - 1) : '') : ''}</div></div>
+    return `<div class="ii"><div class="ii-i">${refBtn(it.ref)}<div class="mut small">${supersededBy(it.ref) ? `<a class="bd w" href="${linkR(supersededBy(it.ref).ref)}">sustituida por ${esc(supersededBy(it.ref).ref)}</a> ` : ''}${p ? esc([p.type, p.name].filter(Boolean).join(' · ')) : supersededBy(it.ref) ? '' : 'Fuera del catálogo'}${first ? ' · ' + esc(first.name) + (mo(p).size > 1 ? ' +' + (mo(p).size - 1) : '') : ''}</div></div>
       <div class="ii-a">${uso}${mv}<div class="step"><button type="button" data-iq="-1" data-ref="${esc(it.ref)}" aria-label="Restar">−</button><span aria-live="polite">${it.qty}</span><button type="button" data-iq="1" data-ref="${esc(it.ref)}" aria-label="Sumar">+</button></div><button type="button" class="sm ghost x" data-idel="${list}" data-ref="${esc(it.ref)}" aria-label="Quitar ${esc(it.ref)}">✕</button></div></div>`;
   }).join('')}</div>`;
   h += `<div class="acts bottom"><button type="button" class="btn pri" data-ishare="${list}">Compartir lista</button><button type="button" class="sm ghost" data-iexp>Exportar copia</button><button type="button" class="sm ghost" data-iimp>Importar copia</button><button type="button" class="sm ghost bad" data-iclear="${list}">Vaciar</button></div>`;
@@ -303,7 +327,9 @@ export function reviewData() {
     noSerie: D.models.filter(m => !serieOf(m.id)),
     noCode: D.models.filter(m => !m.codes.length),
     emptyS: D.series.filter(s => !s.models.length),
-    dupCodes: [...ix.byCode.entries()].filter(([, a]) => a.length > 1)
+    dupCodes: [...ix.byCode.entries()].filter(([, a]) => a.length > 1),
+    stale: D.parts.filter(p => supersededBy(p.ref)),
+    techRefs: D.tech.filter(x => x.refs.some(r => !partByRef(r)))
   };
 }
 export const blocking = d => d.dupRefs.length + d.noType.filter(p => p.type && !TY(p.type)).length;
@@ -324,6 +350,48 @@ export function reviewView() {
   h += sec('Modelos sin serie', d.noSerie, ml(d.noSerie));
   h += sec('Modelos sin código', d.noCode, ml(d.noCode));
   h += sec('Series sin modelos', d.emptyS, `<div class="list">${d.emptyS.map(s => `<a class="row" href="${linkS(s)}"><b>${esc(s.name)}</b></a>`).join('')}</div>`);
+  h += sec('Referencias sustituidas que siguen en el catálogo (informativo)', d.stale, partRows(d.stale), 'Se muestran con el aviso «sustituida por». Bórralas si ya no se deben pedir.');
+  h += sec('SC o consultas con piezas fuera del catálogo (informativo)', d.techRefs, techRows(d.techRefs));
   h += sec('Códigos repetidos en varios modelos', d.dupCodes, d.dupCodes.map(([c, a]) => `<div class="list"><div class="lh">${esc(c.toUpperCase())}</div>${a.map(modelRow).join('')}</div>`).join(''));
   return h + (n || d.origin.length ? '' : empty('Sin incidencias.'));
+}
+
+/* ---------- TÉCNICO: códigos SC y consultas ---------- */
+
+export const KIND = { sc: 'Códigos SC', guia: 'Consultas' };
+function techApplies(x) {
+  if (!x.t.length) return 'Todos los equipos';
+  return x.t.map(t => (t.k === 's' ? SR(t.id)?.name : M(t.id)?.name)).filter(Boolean).join(', ');
+}
+export function techRows(list) {
+  return `<div class="list">${list.map(x => `<a class="row" href="#/t/${encodeURIComponent(x.id)}" data-s="${esc(nrm([x.code, x.title, techApplies(x), x.causes, x.steps].join(' ')))}"><span class="rm">${x.kind === 'sc' ? `<b class="code sc">${esc(x.code || 'SC')}</b>` : ''}<b>${esc(x.title || x.code)}</b><span class="mut small">${esc(techApplies(x))}</span></span><span class="n"></span></a>`).join('')}</div>`;
+}
+export function techListView(kind) {
+  kind = kind === 'guia' ? 'guia' : 'sc';
+  const m = mine();
+  const list = st.D.tech.filter(x => x.kind === kind && (UI.all || !m.length || !x.t.length || m.some(sid => [...techMo(x)].some(id => serieOf(id)?.id === sid))))
+    .sort((a, b) => cmp(a.code || a.title, b.code || b.title));
+  const tabs = Object.entries(KIND).map(([k, l]) => `<a href="#/tec/${k}" class="${k === kind ? 'on' : ''}" ${k === kind ? 'aria-current="page"' : ''}>${l} <small>${st.D.tech.filter(x => x.kind === k).length}</small></a>`).join('');
+  let h = `<header class="ph"><h1>Técnico</h1><div class="meta">${kind === 'sc' ? 'Códigos SC: causas posibles, solución y piezas relacionadas.' : 'Procedimientos y consultas: modo SP, ajustes, comprobaciones.'}</div>${ed() ? `<div class="acts"><button type="button" class="sm ghost" data-act="newTech" data-id="k:${kind}">+ ${kind === 'sc' ? 'Código SC' : 'Consulta'}</button><button type="button" class="sm ghost" data-act="techTable">Importar tabla</button><button type="button" class="sm ghost" data-act="techCsv">Exportar CSV</button></div>` : ''}</header>
+    <nav class="seg tabs" aria-label="Tipo">${tabs}</nav>${m.length ? mineBar() : ''}`;
+  if (!list.length) return h + empty(ed() ? 'Vacío. Añade entradas con el botón superior o importa una tabla desde Excel.' : 'Todavía no hay entradas.');
+  return h + `<input type="search" class="tf" placeholder="Filtrar por código, texto o equipo" aria-label="Filtrar">` + techRows(list);
+}
+const lines = t => String(t || '').split('\n').map(l => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim()).filter(Boolean);
+export function techView(x) {
+  if (!x) return empty('No encontrado.');
+  const ms = [...techMo(x)].map(M).filter(Boolean);
+  const applies = !x.t.length ? '<span class="mut">Todos los equipos</span>' : x.t.map(t => { const s = t.k === 's' ? SR(t.id) : null, m = t.k === 'm' ? M(t.id) : null; return s ? `<a class="mc s" href="${linkS(s)}">${esc(s.name)} <small>serie</small></a>` : m ? mchip(m) : ''; }).join('');
+  const parts = x.refs.map(r => { const p = partByRef(r), nw = supersededBy(r), cur = p || nw;
+    return `<div class="pr"><div class="pr-h">${cur ? typeTag(cur.type) : '<span class="tt">Fuera del catálogo</span>'}${nw && !p ? `<span class="bd w">sustituida por ${esc(nw.ref)}</span>` : ''}</div><div class="pr-r">${refBtn(cur ? cur.ref : r)}<a class="go" href="${linkR(cur ? cur.ref : r)}" aria-label="Detalle">›</a></div>${cur?.name ? `<div class="pc-d">${esc(cur.name)}</div>` : ''}<div class="pc-a">${invBtn('pedir', cur ? cur.ref : r)}${invBtn('tengo', cur ? cur.ref : r)}</div></div>`; }).join('');
+  const cs = lines(x.causes), st_ = lines(x.steps);
+  return `<header class="ph" style="--c:${x.kind === 'sc' ? 'var(--bad)' : 'var(--pri)'}"><div class="crumb"><a href="#/tec/${x.kind}">${KIND[x.kind]}</a></div>
+    <h1>${x.kind === 'sc' ? `<span class="code sc big">${esc(x.code)}</span> ` : ''}${esc(x.title)}</h1>
+    <div class="wrap" style="margin-top:6px">${applies}</div>
+    <div class="acts">${reportBtn((x.code ? x.code + ' ' : '') + x.title, `Entrada técnica: ${x.code} ${x.title}\nEnlace: ${location.origin + location.pathname}#/t/${x.id}\n\nCorrección o aporte: `)}${editBtn('editTech', x.id)}</div></header>
+    ${cs.length ? `<section class="blk"><h2 class="h">${x.kind === 'sc' ? 'Causas posibles' : 'Cuándo aplica'}</h2><ul class="steps-l">${cs.map(l => `<li>${esc(l)}</li>`).join('')}</ul></section>` : ''}
+    ${st_.length ? `<section class="blk"><h2 class="h">${x.kind === 'sc' ? 'Solución' : 'Pasos'}</h2><ol class="steps-l">${st_.map(l => `<li>${esc(l)}</li>`).join('')}</ol></section>` : ''}
+    ${parts ? `<section class="blk"><h2 class="h">Piezas relacionadas</h2><div class="plist">${parts}</div></section>` : ''}
+    ${x.note ? `<section class="blk"><h2 class="h">Notas</h2><div class="pc note">${esc(x.note).replace(/\n/g, '<br>')}</div></section>` : ''}
+    ${ms.length && x.t.length ? '' : ''}`;
 }
