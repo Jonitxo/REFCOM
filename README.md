@@ -1,20 +1,44 @@
 # Referencias por modelo
 
-Herramienta web de consulta de referencias de piezas por modelo de equipo, organizada por familia, serie y franja. Todo el equipo la consulta desde el navegador; solo quien tenga permiso de escritura en este repositorio puede actualizarla.
+Consulta rápida de referencias de piezas por serie y modelo de equipo, pensada para el móvil: el técnico encuentra la referencia y la pide sin abrir el despiece. Todo el equipo consulta; solo quien tenga permiso de escritura en este repositorio puede actualizar los datos.
+
+## Estructura de los datos
+
+**Serie** (METIS MF4) → **Modelo** (IM C2010 · código D0DY) → **Piezas** agrupadas por sistema (PCU, Reveladoras K/C/M/Y, Fusión…).
+
+- **Categoría** de la serie (p. ej. «MULTIFUNCION COLOR»): etiqueta para filtrar en la pantalla de inicio.
+- **Franja** del modelo (Alta, Media, Baja): etiqueta con color en la fila del modelo.
+- **Despiece**: enlace por modelo; si un modelo no tiene, se usa el de su serie.
+- Una pieza se asigna a modelos concretos o a una serie entera (incluye los modelos que se añadan después).
+- **Común a toda la serie**: piezas de tipo marcado como «Común» que cubren todos los modelos de la serie; se muestran una sola vez.
+- **Origen**: si los 4 primeros caracteres de una referencia coinciden con el código de un modelo (D0DZ2205 → IM C2510), se indica como modelo de origen y, al dar de alta, se sugiere asignarla. Es un patrón observado en los datos, no una regla documentada; la asignación siempre la decide el editor.
+
+Los datos de versiones anteriores (familia > serie > franja/grupo) se convierten solos al cargarlos; el archivo se guarda en el formato nuevo en la siguiente publicación.
 
 ## Contenido del repositorio
 
 | Archivo | Función |
 |---|---|
-| `index.html` | La aplicación completa (un solo archivo, sin dependencias). |
-| `data.json` | Los datos: tipos de pieza, modelos, series, franjas y referencias. Es lo que se actualiza. |
-| `sw.js`, `manifest.webmanifest`, `icon-192.png`, `icon-512.png` | App instalable (PWA) y consulta sin conexión. |
-| `.nojekyll` | Indica a GitHub Pages que sirva los archivos tal cual. |
+| `index.html` | Estructura de la página. |
+| `css/app.css` | Estilos (móvil primero). |
+| `js/app.js` | Rutas, pintado y eventos. |
+| `js/views.js` | Pantallas: inicio, serie, modelo, referencia, búsqueda, vista general, inventario, revisión. |
+| `js/forms.js` | Formularios del editor, importación y exportación, publicación. |
+| `js/store.js` | Modelo de datos, migraciones e índices. |
+| `js/github.js` | Carga de `data.json`, sesión con token y publicación. |
+| `js/inv.js` | Inventario personal (solo en el dispositivo). |
+| `js/util.js` | Utilidades comunes. |
+| `data.json` | Los datos. Es lo único que cambia al publicar. |
+| `sw.js`, `manifest.webmanifest`, iconos | App instalable y consulta sin conexión. |
+| `tools/validar.mjs`, `.github/workflows/validar.yml` | Validación automática de `data.json` en cada cambio. |
+| `package.json` | Solo indica a Node que los `.js` son módulos (para la validación). |
+
+Sin dependencias ni compilación. Para probar en local hace falta un servidor (los módulos JavaScript no funcionan abriendo el archivo desde el disco): `python3 -m http.server` y abrir `http://localhost:8000`.
 
 ## Publicación (una sola vez)
 
 1. Crea un repositorio en GitHub (por ejemplo `referencias-piezas`).
-2. Sube los tres archivos a la raíz del repositorio (Add file → Upload files).
+2. Sube todos los archivos y carpetas a la raíz del repositorio (Add file → Upload files).
 3. En el repositorio: Settings → Pages → Build and deployment → Source: *Deploy from a branch* → Branch: `main` y carpeta `/ (root)` → Save.
 4. Tras unos instantes, la web queda en `https://USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/`. Comparte esa dirección con el equipo.
 
@@ -37,37 +61,30 @@ La edición se controla con GitHub, no con contraseñas de la página. Cada edit
 
 El token no se guarda en ningún servidor: solo en el navegador de quien lo introduce.
 
-## Uso diario
+## Uso diario (equipo)
 
-**Consulta (todo el equipo):** abrir la dirección web. Navegar por familia → serie → modelo, o buscar una referencia, modelo o código. Clic en una referencia: se copia y se muestran los modelos donde aplica.
+- **Inicio**: series como tarjetas, con filtro por categoría, favoritos y recientes. Serie → lista de modelos con código → modelo.
+- **Modelo**: piezas en tarjetas por sistema, con salto rápido entre sistemas. Tocar la referencia la copia. «+ Pedir» y «+ Tengo» la añaden al inventario personal. «Despiece» abre el enlace.
+- **Buscar**: referencia, modelo, código o tipo; ignora mayúsculas, acentos, espacios y guiones. Varias palabras se combinan (`c2010 fusor`). Atajos de teclado: `/` o Ctrl+K.
+- **General**: todos los modelos con sus referencias en una pantalla, por serie plegable.
+- **Serie**: vistas «Modelos», «Resumen» y «Matriz» (la matriz es para pantallas anchas). Exportar CSV.
+- **Mi inventario**: listas Tengo / Pedir / Devolver con cantidades. En «Tengo», uso habitual u ocasional. «Recibida» pasa una pieza de Pedir a Tengo. «Compartir lista» abre el menú de compartir del móvil (o copia el texto) para enviarlo por Teams. Se guarda solo en ese dispositivo: si se borran los datos del navegador se pierde, por eso existe «Exportar copia».
+- Favoritos, recientes, vista preferida e inventario se guardan en el navegador de cada dispositivo y no se sincronizan.
+- Instalable como app desde el navegador (HTTPS). Sin conexión muestra la última versión cargada. Los datos nuevos se cargan solos al volver a la app y cada 5 minutos.
 
-**Edición:**
-1. Pulsar *Acceso editor* e introducir `usuario/repositorio` y el token. *Recordar en este navegador* conserva el token entre sesiones; sin marcar, se borra al cerrar la pestaña.
-2. Crear series (con familia y franjas), modelos y piezas. Cada celda vacía de la matriz tiene un botón «+» para añadir la referencia con el tipo y el modelo ya rellenos. Ajustes → Tipos de pieza define las columnas, los colores K/C/M/Y y las piezas comunes de serie.
-3. Los cambios se guardan como borrador en el navegador y aparece «Cambios sin publicar». Pulsar **Publicar** para guardarlos en `data.json` mediante un commit. GitHub tarda un momento en actualizar la web.
+## Edición
 
-Cada publicación es un commit con historial completo: se puede ver quién cambió qué y volver a una versión anterior desde GitHub.
+1. «Acceso» → `usuario/repositorio` y token. «Recordar en este dispositivo» conserva el token.
+2. Botón «Editar» (barra inferior en móvil, arriba en escritorio): + Pieza, + Varias, + Modelo, + Serie, Importar tabla, Tipos de pieza, Revisión, Exportar, Deshacer (también Ctrl+Z, 40 pasos).
+3. En cada serie y modelo aparecen «Editar», «+ Modelo» y «+ Pieza» con el destino ya marcado. Al editar una serie se ordena su lista de modelos.
+4. Los cambios quedan como borrador en el navegador («Sin publicar»). «Publicar» muestra el resumen y guarda `data.json` con un commit. GitHub Pages tarda un momento en reflejarlo.
+5. «Revisión» lista incidencias. Referencias duplicadas y tipos inexistentes bloquean la publicación.
 
-### Varios editores
+**Importar tabla**: columnas reconocidas por cabecera: Serie, Categoría, Modelo, Códigos, Plataforma, Franja, Despiece, Tipo, Referencia, Descripción, Uso, Notas, Verificar (formato de «Exportar CSV»; «Familia» se acepta como Categoría). Solo añade o amplía.
 
-Si dos personas editan a la vez, la primera en publicar gana. A la segunda, la herramienta le avisa de que hay cambios publicados que no tiene, no sobrescribe nada y le ofrece descargar su versión como copia JSON. Tras recargar, debe volver a aplicar sus cambios sobre la versión publicada.
+**Varios editores**: si dos personas editan a la vez, la primera en publicar gana; a la segunda no se le sobrescribe nada y se le ofrece descargar su versión.
 
-## Otras funciones
-
-- **Exportar JSON / CSV, Importar JSON:** en Ajustes. Importar reemplaza el inventario en edición y requiere publicar después.
-- **Descartar cambios sin publicar:** en Ajustes, vuelve a la versión publicada.
-- **Modo local:** abriendo `index.html` directamente desde el disco, o en `localhost`, el acceso de editor ofrece un modo local sin GitHub. Publicar descarga `data.json` para subirlo manualmente al repositorio. Al abrir el archivo desde el disco, el navegador bloquea la lectura de `data.json`, por lo que la consulta solo funciona desde la web publicada.
-
-- **Instalación y sin conexión:** desde la web publicada (HTTPS) el navegador ofrece instalarla como app. Sin conexión muestra la última versión visitada.
-- **Enlaces directos:** la dirección refleja modelo, serie, referencia y búsqueda; «Copiar enlace» comparte la vista exacta.
-- **Búsqueda tolerante:** ignora mayúsculas, acentos, espacios y guiones; varios términos se combinan (modelo + referencia).
-- **Favoritos y recientes:** se guardan en el navegador de cada dispositivo (localStorage), no se sincronizan.
-- **Actualización automática:** los visores recargan `data.json` al volver a la pestaña y cada 5 minutos.
-- **Deshacer:** botón o Ctrl+Z en modo editor (40 pasos, hasta publicar).
-- **Importar tabla:** Ajustes → Importar tabla; admite pegar desde Excel o CSV, y el formato de «Exportar CSV».
-- **Clonar modelo, edición desde cada celda (+), panel «Revisión»:** duplicados de códigos, formatos inusuales, piezas sin asignar o por verificar.
-- **Impresión / PDF:** botón «Imprimir / PDF» en series y modelos (horizontal, con colores).
-- **Historial:** el enlace del pie apunta a `commits/main/data.json`; si la rama por defecto no es `main`, ajusta la dirección.
+**Modo local** (en `localhost`): edición sin GitHub; «Descargar data.json» para subirlo a mano.
 
 ## Límites de GitHub Pages
 
@@ -75,4 +92,4 @@ Según la documentación de GitHub: sitio publicado de hasta 1 GB, límite orien
 
 ## Copia de seguridad
 
-El historial de commits conserva cada versión. Para una copia adicional, usa *Exportar JSON* en Ajustes o descarga `data.json` del repositorio.
+El historial de commits conserva cada versión de `data.json` (Editar → «Historial de publicaciones»). Para una copia adicional: Editar → Exportar JSON. Al actualizar la aplicación, no sobrescribas `data.json` con uno vacío.
