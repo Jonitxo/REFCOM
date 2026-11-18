@@ -1,6 +1,6 @@
 {
  "version": 5,
- "updated": "",
+ "updated": "2026-11-18T16:31:06.480Z",
  "types": [
   {
    "name": "PCU K",
@@ -188,7 +188,54 @@
    "alias": []
   }
  ],
- "models": [],
- "groups": [],
- "parts": []
+ "models": [
+  {
+   "id": "aa036c75-7110-4074-806c-dec214476974",
+   "name": "IM C2010",
+   "codes": [
+    "D0DY"
+   ],
+   "platform": "METIS-MF4y"
+  },
+  {
+   "id": "88e5c8cc-ebb5-4473-93cf-efb9848c508c",
+   "name": "IM C2510",
+   "codes": [
+    "D0DZ"
+   ],
+   "platform": "METIS-MF4y"
+  }
+ ],
+ "groups": [
+  {
+   "id": "20f971da-0dbe-4d6f-a4eb-48ef58009130",
+   "name": "METIS MF4",
+   "kind": "serie",
+   "family": "MULTIFUNCION COLOR",
+   "parent": "",
+   "color": "",
+   "models": [
+    "aa036c75-7110-4074-806c-dec214476974",
+    "88e5c8cc-ebb5-4473-93cf-efb9848c508c"
+   ]
+  }
+ ],
+ "parts": [
+  {
+   "id": "6a2e9c0e-2f14-4b8f-8ca5-665a2c2b3a29",
+   "ref": "D0DZ2205",
+   "type": "PCU K",
+   "name": "",
+   "note": "",
+   "hab": true,
+   "chk": false,
+   "gen": false,
+   "t": [
+    {
+     "k": "m",
+     "id": "aa036c75-7110-4074-806c-dec214476974"
+    }
+   ]
+  }
+ ]
 }
