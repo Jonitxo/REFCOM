@@ -66,6 +66,10 @@ El token no se guarda en ningún servidor: solo en el navegador de quien lo intr
 - **Inicio**: series como tarjetas, con filtro por categoría, favoritos y recientes. Serie → lista de modelos con código → modelo.
 - **Modelo**: piezas en tarjetas por sistema, con salto rápido entre sistemas. Tocar la referencia la copia. «+ Pedir» y «+ Tengo» la añaden al inventario personal. «Despiece» abre el enlace.
 - **Buscar**: referencia, modelo, código o tipo; ignora mayúsculas, acentos, espacios y guiones. Varias palabras se combinan (`c2010 fusor`). Atajos de teclado: `/` o Ctrl+K.
+- **Mis series**: cada técnico elige las series que atiende («Elegir mis series»). Inicio, General y Técnico muestran solo esas, con «Todas» a un toque. Se guarda en el dispositivo.
+- **Sustituciones**: si una referencia fue reemplazada, buscar la antigua lleva a la vigente y la antigua muestra «sustituida por …» (también en el inventario).
+- **Técnico**: códigos SC (causas posibles, solución y piezas relacionadas) y consultas (procedimientos como el acceso a modo SP). Cada modelo muestra al final las que le aplican. La búsqueda encuentra «SC542» o «542».
+- **Avisar de un error**: en modelos, referencias, entradas técnicas y búsquedas sin resultado. Abre un correo al responsable con el contexto escrito o, si no hay correo configurado, lo comparte o copia para Teams.
 - **General**: todos los modelos con sus referencias en una pantalla, por serie plegable.
 - **Serie**: vistas «Modelos», «Resumen» y «Matriz» (la matriz es para pantallas anchas). Exportar CSV.
 - **Mi inventario**: listas Tengo / Pedir / Devolver con cantidades. En «Tengo», uso habitual u ocasional. «Recibida» pasa una pieza de Pedir a Tengo. «Compartir lista» abre el menú de compartir del móvil (o copia el texto) para enviarlo por Teams. Se guarda solo en ese dispositivo: si se borran los datos del navegador se pierde, por eso existe «Exportar copia».
@@ -74,13 +78,20 @@ El token no se guarda en ningún servidor: solo en el navegador de quien lo intr
 
 ## Edición
 
+
 1. «Acceso» → `usuario/repositorio` y token. «Recordar en este dispositivo» conserva el token.
 2. Botón «Editar» (barra inferior en móvil, arriba en escritorio): + Pieza, + Varias, + Modelo, + Serie, Importar tabla, Tipos de pieza, Revisión, Exportar, Deshacer (también Ctrl+Z, 40 pasos).
 3. En cada serie y modelo aparecen «Editar», «+ Modelo» y «+ Pieza» con el destino ya marcado. Al editar una serie se ordena su lista de modelos.
 4. Los cambios quedan como borrador en el navegador («Sin publicar»). «Publicar» muestra el resumen y guarda `data.json` con un commit. GitHub Pages tarda un momento en reflejarlo.
 5. «Revisión» lista incidencias. Referencias duplicadas y tipos inexistentes bloquean la publicación.
 
-**Importar tabla**: columnas reconocidas por cabecera: Serie, Categoría, Modelo, Códigos, Plataforma, Franja, Despiece, Tipo, Referencia, Descripción, Uso, Notas, Verificar (formato de «Exportar CSV»; «Familia» se acepta como Categoría). Solo añade o amplía.
+**Sustituciones**: en la pieza vigente, campo «Sustituye a» con las referencias anteriores separadas por coma.
+
+**Técnico**: «Editar» → «+ SC / consulta», o en la pestaña Técnico «Importar tabla» con cabecera Tipo (SC o Consulta), Código, Título, Serie, Modelo, Causas, Solución, Piezas, Notas. En Causas y Solución, cada línea de la celda (Alt+Intro en Excel) es un punto. Sin serie ni modelo, la entrada aplica a todos los equipos. «Exportar CSV» devuelve el mismo formato. El contenido técnico lo introduce el editor; la herramienta no trae datos de SC.
+
+**Correo de avisos**: «Editar» → «Correo de avisos». Se publica en `data.json`, visible para quien abra la web.
+
+**Importar tabla**: columnas reconocidas por cabecera: Serie, Categoría, Modelo, Códigos, Plataforma, Franja, Despiece, Tipo, Referencia, Descripción, Uso, Notas, Verificar, Sustituye a (formato de «Exportar CSV»; «Familia» se acepta como Categoría). Solo añade o amplía.
 
 **Varios editores**: si dos personas editan a la vez, la primera en publicar gana; a la segunda no se le sobrescribe nada y se le ofrece descargar su versión.
 

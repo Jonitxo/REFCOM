@@ -1,10 +1,10 @@
 // Arranque, rutas (#/…), pintado y eventos globales.
 
 import { $, $$, esc, lsGet, lsSet, copyText, toast, download, nrm, cmp } from './util.js';
-import { st, K, ix, reindex, setOnChange, M, SR, P, modelByName, serieByName, partByRef, modelsOfSerie, undo } from './store.js';
+import { st, K, ix, reindex, setOnChange, M, SR, P, TECH, modelByName, serieByName, partByRef, supersededBy, modelsOfSerie, undo } from './store.js';
 import { loadPublished, pollData, login, savedToken, savedRepo, clearToken } from './github.js';
 import * as V from './views.js';
-import { setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv } from './forms.js';
+import { setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
 import { invAdd, invQty, invRemove, invUso, invMove, invClear, invCount, invExport, invImport, invGet } from './inv.js';
 
 const mobile = () => matchMedia('(max-width: 760px)').matches;
@@ -26,7 +26,7 @@ function parse(hash) {
   }
   const [, a = '', ...rest] = h.split('/');
   const id = rest.length ? decodeURIComponent(rest.join('/')) : '';
-  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev' };
+  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't' };
   return { v: map[a] || 'home', id };
 }
 
@@ -51,6 +51,8 @@ function render() {
     case 'r': html = V.refView(route.id); title = route.id; break;
     case 'q': html = V.searchView(route.id); title = 'Buscar'; if ($('#q').value !== route.id && document.activeElement !== $('#q')) $('#q').value = route.id; break;
     case 'ov': html = V.overviewView(cat); title = 'Vista general'; break;
+    case 'tec': html = V.techListView(route.id); title = 'Técnico'; break;
+    case 't': { const x = TECH(route.id); html = x ? V.techView(x) : notFound(); title = x ? (x.code || x.title) : 'Técnico'; break; }
     case 'inv': html = V.invView(['tengo', 'pedir', 'devolver'].includes(route.id) ? route.id : 'pedir'); title = 'Mi inventario'; break;
     case 'gen': case 'un': html = V.genView(route.v); break;
     case 'rev': html = st.editing ? V.reviewView() : notFound(); title = 'Revisión'; break;
@@ -76,7 +78,7 @@ function renderChrome() {
   $('#dirty').hidden = !(st.editing && st.dirty);
   $('#btnAcc').textContent = st.editing ? 'Editar' : 'Acceso';
   $('#btnAcc').classList.toggle('pri', st.editing);
-  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv' }[route.v] || '';
+  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec' }[route.v] || '';
   $$('#nav [data-nav]').forEach(a => { const on = a.dataset.nav === act; a.classList.toggle('on', on); on ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
   const n = invCount('pedir');
   $('#invN').textContent = n || ''; $('#invN').hidden = !n;
@@ -100,7 +102,7 @@ $('#q').addEventListener('input', e => {
   }, 150);
 });
 $('#q').addEventListener('keydown', e => {
-  if (e.key === 'Enter') { const p = partByRef(e.target.value); if (p) { location.hash = V.linkR(p.ref); e.target.blur(); } else e.target.blur(); }
+  if (e.key === 'Enter') { const p = partByRef(e.target.value) || supersededBy(e.target.value); if (p) { location.hash = V.linkR(p.ref); e.target.blur(); } else e.target.blur(); }
   if (e.key === 'Escape') { e.target.value = ''; e.target.dispatchEvent(new Event('input')); }
 });
 $('#qx').addEventListener('click', () => { $('#q').value = ''; $('#q').dispatchEvent(new Event('input')); $('#q').focus(); });
@@ -134,6 +136,8 @@ document.addEventListener('click', e => {
   if (q('[data-iimp]')) { $('#invFile').click(); return; }
   if ((el = q('[data-fav]'))) { toggleFav(el.dataset.fav, el.dataset.id); keepScroll(render); return; }
   if ((el = q('[data-view]'))) { serieView = el.dataset.view; lsSet(K.view, serieView); render(); return; }
+  if ((el = q('[data-all]'))) { V.UI.all = el.dataset.all === '1'; render(); return; }
+  if ((el = q('[data-report]'))) { report(el.dataset.report, el.dataset.body); return; }
   if ((el = q('[data-cat]'))) { cat = el.dataset.cat; lsSet(K.cat, cat); render(); return; }
   if ((el = q('[data-jump]'))) { document.getElementById(el.dataset.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   if ((el = q('[data-ovall]'))) { $$('details.ovs').forEach(d => { d.open = el.dataset.ovall === '1'; }); return; }
@@ -142,6 +146,7 @@ document.addEventListener('click', e => {
 
 function act(a, id) {
   if (a === 'share') { copyText(location.href); toast('Enlace copiado'); return; }
+  if (a === 'mine') { mineForm(); return; }
   if (a === 'csv') { const s = SR(id.slice(2)); if (s) exportCsv(s.models, 'referencias-' + s.name.replace(/[^\w-]+/g, '_') + '.csv'); return; }
   if (!st.editing) return;
   if (a === 'editSerie') serieForm(SR(id));
@@ -149,6 +154,10 @@ function act(a, id) {
   else if (a === 'editPart') partForm(P(id));
   else if (a === 'newModel') modelForm(null, id);
   else if (a === 'newPart') partForm(null, [{ k: id[0], id: id.slice(2) }]);
+  else if (a === 'newTech') id.startsWith('k:') ? techForm(null, [], id.slice(2)) : techForm(null, [{ k: id[0], id: id.slice(2) }]);
+  else if (a === 'editTech') techForm(TECH(id));
+  else if (a === 'techTable') techTableForm();
+  else if (a === 'techCsv') exportTechCsv();
 }
 
 document.addEventListener('change', e => {
@@ -156,6 +165,11 @@ document.addEventListener('change', e => {
   if (!f) return;
   V.F[f] = f === 'hab' ? e.target.checked : e.target.value;
   keepScroll(render);
+});
+document.addEventListener('input', e => {
+  if (!e.target.classList.contains('tf')) return;
+  const v = nrm(e.target.value);
+  $$('.list .row[data-s]', $('#main')).forEach(r => { r.hidden = !!v && !r.dataset.s.includes(v); });
 });
 document.addEventListener('submit', e => {
   const f = e.target;
@@ -173,6 +187,15 @@ $('#invFile').addEventListener('change', async e => {
   catch { alert('Archivo no válido'); }
   e.target.value = '';
 });
+
+/** Aviso al editor: correo si hay dirección configurada; si no, compartir o copiar el texto. */
+async function report(subject, body) {
+  const to = st.D.config?.contacto;
+  if (to) { location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; return; }
+  const text = subject + '\n' + body;
+  if (navigator.share) { try { await navigator.share({ title: subject, text }); return; } catch (x) { if (x && x.name === 'AbortError') return; } }
+  copyText(text); toast('Aviso copiado: pégalo en Teams al responsable');
+}
 
 async function shareList(list) {
   const text = V.invText(list);
