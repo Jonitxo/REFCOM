@@ -1,0 +1,194 @@
+{
+ "version": 5,
+ "updated": "",
+ "types": [
+  {
+   "name": "PCU K",
+   "system": "PCU",
+   "channel": "",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "PCU COL",
+   "system": "PCU",
+   "channel": "",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "PCU K+COL",
+   "system": "PCU",
+   "channel": "",
+   "common": false,
+   "alias": [
+    "PCU K",
+    "PCU COL"
+   ]
+  },
+  {
+   "name": "PCU",
+   "system": "PCU",
+   "channel": "",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "PCDU K",
+   "system": "PCDU",
+   "channel": "K",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "PCDU C",
+   "system": "PCDU",
+   "channel": "C",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "PCDU M",
+   "system": "PCDU",
+   "channel": "M",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "PCDU Y",
+   "system": "PCDU",
+   "channel": "Y",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Revelador K",
+   "system": "Reveladoras",
+   "channel": "K",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Revelador C",
+   "system": "Reveladoras",
+   "channel": "C",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Revelador M",
+   "system": "Reveladoras",
+   "channel": "M",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Revelador Y",
+   "system": "Reveladoras",
+   "channel": "Y",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Revelador",
+   "system": "Reveladoras",
+   "channel": "",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Sleeve",
+   "system": "Sleeve",
+   "channel": "",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "ITB unit",
+   "system": "Transferencia",
+   "channel": "",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Banda transferencia",
+   "system": "Transferencia",
+   "channel": "",
+   "common": true,
+   "alias": []
+  },
+  {
+   "name": "Limpieza ITB",
+   "system": "Transferencia",
+   "channel": "",
+   "common": true,
+   "alias": []
+  },
+  {
+   "name": "Fusor",
+   "system": "Fusión",
+   "channel": "",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Rodillo presión",
+   "system": "Fusión",
+   "channel": "",
+   "common": true,
+   "alias": []
+  },
+  {
+   "name": "Feed roller",
+   "system": "Alimentación",
+   "channel": "",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Separate roller",
+   "system": "Alimentación",
+   "channel": "",
+   "common": false,
+   "alias": []
+  },
+  {
+   "name": "Tambor",
+   "system": "Otros",
+   "channel": "",
+   "common": true,
+   "alias": []
+  },
+  {
+   "name": "Cuchilla",
+   "system": "Otros",
+   "channel": "",
+   "common": true,
+   "alias": []
+  },
+  {
+   "name": "Carga",
+   "system": "Otros",
+   "channel": "",
+   "common": true,
+   "alias": []
+  },
+  {
+   "name": "Sellos",
+   "system": "Otros",
+   "channel": "",
+   "common": true,
+   "alias": []
+  },
+  {
+   "name": "Consumible",
+   "system": "Consumibles",
+   "channel": "",
+   "common": false,
+   "alias": []
+  }
+ ],
+ "models": [],
+ "groups": [],
+ "parts": []
+}
