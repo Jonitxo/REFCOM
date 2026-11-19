@@ -5,6 +5,7 @@ import { st, K, ix, reindex, setOnChange, M, SR, P, TECH, modelByName, serieByNa
 import { loadPublished, pollData, login, savedToken, savedRepo, clearToken } from './github.js';
 import * as V from './views.js';
 import { setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
+import { importStock, exportStock, stockClear, stockGet, stockToggleDel, stockQty, stockReset, stockAdd, stockFinal, SF } from './stock.js';
 import { invAdd, invQty, invRemove, invUso, invMove, invClear, invCount, invExport, invImport, invGet } from './inv.js';
 
 const mobile = () => matchMedia('(max-width: 760px)').matches;
@@ -53,7 +54,7 @@ function render() {
     case 'ov': html = V.overviewView(cat); title = 'Vista general'; break;
     case 'tec': html = V.techListView(route.id); title = 'Técnico'; break;
     case 't': { const x = TECH(route.id); html = x ? V.techView(x) : notFound(); title = x ? (x.code || x.title) : 'Técnico'; break; }
-    case 'inv': html = V.invView(['tengo', 'pedir', 'devolver'].includes(route.id) ? route.id : 'pedir'); title = 'Mi inventario'; break;
+    case 'inv': html = V.invView(['tengo', 'pedir', 'devolver', 'stock'].includes(route.id) ? route.id : 'pedir'); title = 'Mi inventario'; break;
     case 'gen': case 'un': html = V.genView(route.v); break;
     case 'rev': html = st.editing ? V.reviewView() : notFound(); title = 'Revisión'; break;
     default: html = V.homeView(cat);
@@ -130,6 +131,11 @@ document.addEventListener('click', e => {
   if ((el = q('[data-iuso]'))) { invUso(el.dataset.iuso); keepScroll(render); return; }
   if ((el = q('[data-imove]'))) { const [a, b] = el.dataset.imove.split(':'); invMove(a, b, el.dataset.ref); toast(el.dataset.ref + ' pasa a Tengo'); keepScroll(render); return; }
   if ((el = q('[data-idel]'))) { invRemove(el.dataset.idel, el.dataset.ref); keepScroll(render); return; }
+  if ((el = q('[data-sk]'))) { stockAction(el.dataset.sk, el); return; }
+  if ((el = q('[data-skf]'))) { SF.f = el.dataset.skf; render(); return; }
+  if ((el = q('[data-skq]'))) { stockQty(el.dataset.k, +el.dataset.skq); keepScroll(render); return; }
+  if ((el = q('[data-skd]'))) { stockToggleDel(el.dataset.skd); keepScroll(render); return; }
+  if ((el = q('[data-skr]'))) { stockReset(el.dataset.skr); keepScroll(render); return; }
   if ((el = q('[data-iclear]'))) { if (confirm('¿Vaciar esta lista?')) { invClear(el.dataset.iclear); render(); } return; }
   if ((el = q('[data-ishare]'))) { shareList(el.dataset.ishare); return; }
   if (q('[data-iexp]')) { download('mi-inventario-' + new Date().toISOString().slice(0, 10) + '.json', invExport(), 'application/json'); return; }
@@ -169,10 +175,19 @@ document.addEventListener('change', e => {
 document.addEventListener('input', e => {
   if (!e.target.classList.contains('tf')) return;
   const v = nrm(e.target.value);
-  $$('.list .row[data-s]', $('#main')).forEach(r => { r.hidden = !!v && !r.dataset.s.includes(v); });
+  $$('.list .row[data-s], .inv .ii[data-s]', $('#main')).forEach(r => { r.hidden = !!v && !r.dataset.s.includes(v); });
+  if (e.target.classList.contains('sk-q')) SF.q = e.target.value;
 });
 document.addEventListener('submit', e => {
   const f = e.target;
+  if (f.dataset.form === 'skadd') {
+    e.preventDefault();
+    const ref = f.elements.ref.value.trim(), qty = Math.max(1, parseInt(f.elements.qty.value, 10) || 1);
+    const p = partByRef(ref);
+    const r = stockAdd(ref, qty, f.elements.desc.value.trim() || (p ? p.name || p.type : ''));
+    toast({ ok: 'Añadida (verde)', more: 'Cantidad sumada', exists: 'Ya está en el stock rule' }[r] || '');
+    render(); return;
+  }
   if (f.dataset.form !== 'invadd') return;
   e.preventDefault();
   const ref = f.elements.ref.value.trim(), qty = Math.max(1, parseInt(f.elements.qty.value, 10) || 1);
@@ -180,6 +195,35 @@ document.addEventListener('submit', e => {
   invAdd(f.dataset.list, ref, qty);
   render();
   const inp = $('form[data-form=invadd] input[name=ref]'); if (inp && !mobile()) inp.focus();
+});
+async function stockAction(a) {
+  if (a === 'import') { $('#skFile').click(); return; }
+  if (a === 'clear') { if (confirm('¿Quitar el stock rule de este dispositivo? Se pierden los cambios no exportados.')) { stockClear(); render(); } return; }
+  if (a === 'toinv') {
+    const fin = stockFinal(stockGet()), have = invGet().tengo;
+    const add = fin.filter(x => !have.some(h => nrm(h.ref) === nrm(x.ref)));
+    if (!add.length) { toast('Todas ya están en «Tengo»'); return; }
+    if (!confirm(`Añadir ${add.length} referencias a «Tengo» con la cantidad del stock rule (marcadas como uso habitual)? Las que ya tienes no se tocan.`)) return;
+    add.forEach(x => invAdd('tengo', x.ref, x.qty || 1, 'hab'));
+    toast(`${add.length} referencias añadidas a «Tengo»`, { label: 'Ver', href: '#/inv/tengo' }); render(); return;
+  }
+  if (a === 'export') {
+    try {
+      const { blob, name } = await exportStock();
+      const file = new File([blob], name, { type: blob.type });
+      if (mobile() && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: name }); return; } catch (x) { if (x && x.name === 'AbortError') return; }
+      }
+      const u = URL.createObjectURL(blob), l = document.createElement('a'); l.href = u; l.download = name; l.click(); setTimeout(() => URL.revokeObjectURL(u), 2000);
+      toast('Excel generado: ' + name);
+    } catch (x) { alert('No se pudo generar el Excel: ' + x.message); }
+  }
+}
+$('#skFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+  if (stockGet() && !confirm('Se reemplazará el stock rule cargado y sus cambios no exportados. ¿Continuar?')) return;
+  try { const d = await importStock(file); SF.f = 'all'; SF.q = ''; location.hash = '#/inv/stock'; render(); toast(`${d.rows.length} referencias importadas`); }
+  catch (x) { alert('No se pudo leer el archivo: ' + (x.message || x)); }
 });
 $('#invFile').addEventListener('change', async e => {
   const file = e.target.files[0]; if (!file) return;

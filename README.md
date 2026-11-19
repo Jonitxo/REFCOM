@@ -27,6 +27,8 @@ Los datos de versiones anteriores (familia > serie > franja/grupo) se convierten
 | `js/store.js` | Modelo de datos, migraciones e índices. |
 | `js/github.js` | Carga de `data.json`, sesión con token y publicación. |
 | `js/inv.js` | Inventario personal (solo en el dispositivo). |
+| `js/stock.js` | Importación, edición y exportación del stock rule (.xlsx). |
+| `js/vendor/jszip.min.js` | JSZip 3.10.1 (MIT), para leer y escribir el .xlsx en el navegador. Se carga solo en la pantalla de stock rule. |
 | `js/util.js` | Utilidades comunes. |
 | `data.json` | Los datos. Es lo único que cambia al publicar. |
 | `sw.js`, `manifest.webmanifest`, iconos | App instalable y consulta sin conexión. |
@@ -70,6 +72,7 @@ El token no se guarda en ningún servidor: solo en el navegador de quien lo intr
 - **Sustituciones**: si una referencia fue reemplazada, buscar la antigua lleva a la vigente y la antigua muestra «sustituida por …» (también en el inventario).
 - **Técnico**: códigos SC (causas posibles, solución y piezas relacionadas) y consultas (procedimientos como el acceso a modo SP). Cada modelo muestra al final las que le aplican. La búsqueda encuentra «SC542» o «542».
 - **Avisar de un error**: en modelos, referencias, entradas técnicas y búsquedas sin resultado. Abre un correo al responsable con el contexto escrito o, si no hay correo configurado, lo comparte o copia para Teams.
+- **Stock rule** (Mi inventario → Stock rule): importa el Excel de reposición automática del técnico. Lista con todas las referencias: «Eliminar» (rojo), cambiar cantidad con − / + (amarillo, con la nota «Quitar N, dejar M» en la columna L) y añadir referencias nuevas (verde, al final). «Generar Excel» crea `<nombre>_cambios.xlsx` con el mismo formato, columnas y estilos, para enviarlo al jefe de equipo (en el móvil abre el menú de compartir). Las marcas de color que ya tenga el archivo se respetan al importarlo. «Añadir todo a Tengo» pasa al inventario personal las referencias que quedan activas. El archivo y los cambios se guardan solo en ese dispositivo.
 - **General**: todos los modelos con sus referencias en una pantalla, por serie plegable.
 - **Serie**: vistas «Modelos», «Resumen» y «Matriz» (la matriz es para pantallas anchas). Exportar CSV.
 - **Mi inventario**: listas Tengo / Pedir / Devolver con cantidades. En «Tengo», uso habitual u ocasional. «Recibida» pasa una pieza de Pedir a Tengo. «Compartir lista» abre el menú de compartir del móvil (o copia el texto) para enviarlo por Teams. Se guarda solo en ese dispositivo: si se borran los datos del navegador se pierde, por eso existe «Exportar copia».
