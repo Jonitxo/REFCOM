@@ -13,7 +13,7 @@ const RNS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships
 
 /* ---------- carga perezosa de JSZip (solo en esta pantalla) ---------- */
 let zipLib;
-function loadZip() {
+export function loadZip() {
   if (window.JSZip) return Promise.resolve(window.JSZip);
   if (!zipLib) zipLib = new Promise((ok, ko) => {
     const s = document.createElement('script');

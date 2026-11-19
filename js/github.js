@@ -134,6 +134,7 @@ export function diffLines(a, b) {
   }
   if (JSON.stringify(a.types) !== JSON.stringify(b.types)) out.push('Tipos de pieza modificados');
   if (JSON.stringify(a.config || {}) !== JSON.stringify(b.config || {})) out.push('Correo de avisos modificado');
+  if (JSON.stringify(a.templates || []) !== JSON.stringify(b.templates || [])) out.push('Vistas de Excel del equipo modificadas');
   return out;
 }
 
