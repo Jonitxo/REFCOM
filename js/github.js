@@ -63,7 +63,11 @@ async function remote() {
     if (!r2.ok) throw fail('No se pudo leer data.json (' + r2.status + ')');
     txt = await r2.text();
   }
-  return { sha: j.sha, data: migrate(JSON.parse(txt)) };
+  let data = null;
+  try { data = migrate(JSON.parse(txt)); } catch { /* inválido */ }
+  // Nunca editar sobre datos vacíos si el archivo publicado existe pero no se entiende: publicar lo borraría
+  if (!data) throw fail('El data.json publicado no tiene un formato válido. Revísalo en GitHub antes de editar.', true);
+  return { sha: j.sha, data };
 }
 
 export function clearToken() { try { sessionStorage.removeItem(K.tok); } catch { /* */ } lsDel(K.tok); }
@@ -85,13 +89,14 @@ export async function login(repo, token, remember, silent) {
     const j = await r.json();
     if (j.permissions && !j.permissions.push) throw fail('El token no tiene permiso de escritura en este repositorio', true);
     const rem = await remote();
-    st.baseSha = rem.sha;
     const base = rem.data || emptyData();
     st.pubStr = JSON.stringify(base);
     const dr = readDraft(), drData = dr && dr.repo === st.repo ? migrate(dr.data) : null;
     const keep = drData && (dr.base === st.baseSha || silent ||
       !confirm('Hay un borrador local basado en una versión anterior de los datos publicados.\n\nAceptar: descartarlo y usar la versión publicada.\nCancelar: conservar el borrador (al publicar se detectará el conflicto).'));
     st.D = keep ? drData : base;
+    // Con un borrador antiguo, la base es la versión sobre la que se hizo: así «Publicar» detecta el conflicto (409)
+    st.baseSha = keep && dr.base !== undefined ? dr.base : rem.sha;
     st.editing = true; st.mode = 'gh'; st.loadErr = false;
     resetUndo(); persist();
     try {
@@ -99,7 +104,7 @@ export async function login(repo, token, remember, silent) {
       if (remember === true) { localStorage.setItem(K.tok, st.token); sessionStorage.removeItem(K.tok); }
       else if (remember === false) { sessionStorage.setItem(K.tok, st.token); localStorage.removeItem(K.tok); }
     } catch { /* */ }
-    return keep && !silent ? 'draft' : 'ok';
+    return keep && dr.base !== rem.sha ? 'stale' : keep && !silent ? 'draft' : 'ok';
   } catch (e) { st.token = ''; st.editing = false; throw e; }
 }
 

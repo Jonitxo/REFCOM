@@ -219,9 +219,9 @@ main:focus{outline:none}
 .step span{min-width:36px;text-align:center;font-weight:800;font-size:17px}
 
 /* diálogo: hoja inferior en móvil */
-dialog{border:0;padding:0;background:var(--card);color:var(--tx);width:100%;max-width:100%;max-height:92vh;margin:auto 0 0;border-radius:18px 18px 0 0;box-shadow:0 -8px 40px rgba(0,0,0,.3)}
+dialog{border:0;padding:0;background:var(--card);color:var(--tx);width:100%;max-width:100%;max-height:92vh;max-height:92dvh;margin:auto 0 0;border-radius:18px 18px 0 0;box-shadow:0 -8px 40px rgba(0,0,0,.3)}
 dialog::backdrop{background:rgba(10,15,25,.5)}
-.dl{display:flex;flex-direction:column;max-height:92vh}
+.dl{display:flex;flex-direction:column;max-height:92vh;max-height:92dvh}
 .dl header{display:flex;align-items:center;gap:8px;padding:14px 16px 8px}
 .dl h2{margin:0;font-size:19px;flex:1}
 .dl .x{border:0;background:none;min-width:var(--tap)}
@@ -347,6 +347,15 @@ ol.steps-l li::marker{font-weight:800;color:var(--pri)}
   .plist{grid-template-columns:repeat(2,1fr)}
   .xcards{grid-template-columns:repeat(2,1fr)}
   .toast{bottom:24px}
+}
+/* Navegadores sin color-mix() (iOS < 16.2): colores equivalentes */
+@supports not (color:color-mix(in srgb,red 50%,blue)){
+  #nav .on{background:rgba(31,111,235,.12)}
+  .sk .st-del{background:#fbeaea}.sk .st-mod{background:#fff6dc}.sk .st-add,.sk .st-add0{background:#e6f6ec}
+  .xc.flag,.xtbl tr.flag td{background:#fdf3e2}
+  .sug{background:#eef4ff;border-color:#b9cff8}
+  .mc{background:var(--card)}
+  .ref:hover{background:rgba(31,111,235,.14)}
 }
 @media print{
   .top,#nav,.acts,.seg,.jump,.filters,.pc-a,.toast,.skip,.invadd{display:none!important}

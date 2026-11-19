@@ -24,10 +24,12 @@ function parse(hash) {
     if (q.get('g')) return { v: 's', id: q.get('g') };
     if (q.get('r')) return { v: 'r', id: q.get('r') };
     if (q.get('q')) return { v: 'q', id: q.get('q') };
+    if (!h.includes('=') && h) return route; // anclas internas (#main): se queda en la vista actual
     return { v: 'home' };
   }
   const [, a = '', ...rest] = h.split('/');
-  const id = rest.length ? decodeURIComponent(rest.join('/')) : '';
+  let id = rest.join('/');
+  try { id = decodeURIComponent(id); } catch { /* enlace mal formado (p. ej. «100%»): se usa tal cual */ }
   const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls', ayuda: 'help' };
   return { v: map[a] || 'home', id };
 }
@@ -82,6 +84,7 @@ function notFound() { return '<div class="empty"><p>No encontrado. Puede haberse
 function renderChrome() {
   document.body.classList.toggle('auth', st.editing);
   $('#dirty').hidden = !(st.editing && st.dirty);
+  $('#dirty').textContent = st.saveErr ? 'Sin publicar · borrador NO guardado' : 'Sin publicar';
   $('#btnAcc').textContent = st.editing ? 'Editar' : 'Acceso';
   $('#btnAcc').classList.toggle('pri', st.editing);
   const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec', xls: 'xls' }[route.v] || '';
@@ -112,6 +115,7 @@ $('#q').addEventListener('keydown', e => {
 });
 $('#qx').addEventListener('click', () => { $('#q').value = ''; $('#q').dispatchEvent(new Event('input')); $('#q').focus(); });
 
+document.querySelector('.skip').addEventListener('click', e => { e.preventDefault(); $('#main').focus(); });
 $('#btnAcc').addEventListener('click', () => (st.editing ? editMenu(render.ctx) : loginForm()));
 
 window.addEventListener('hashchange', () => { render(); if (!location.hash.startsWith('#/buscar')) window.scrollTo(0, 0); $('#main').focus({ preventScroll: true }); });
@@ -329,7 +333,7 @@ setOnChange(renderChrome);
   await loadPublished();
   const tok = savedToken(), repo = savedRepo();
   if (tok && repo) {
-    try { await login(repo, tok, null, true); }
+    try { if (await login(repo, tok, null, true) === 'stale') setTimeout(() => toast('Tu borrador se hizo sobre una versión anterior: al publicar se avisará del conflicto.'), 800); }
     catch (err) { if (err.fatal) clearToken(); else toast('Sin conexión con GitHub: modo consulta'); }
   }
   render();

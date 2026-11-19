@@ -341,11 +341,12 @@ export function reviewData() {
     emptyS: D.series.filter(s => !s.models.length),
     dupCodes: [...ix.byCode.entries()].filter(([, a]) => a.length > 1),
     stale: D.parts.filter(p => supersededBy(p.ref)),
-    techRefs: D.tech.filter(x => x.refs.some(r => !partByRef(r)))
+    techRefs: D.tech.filter(x => x.refs.some(r => !partByRef(r))),
+    techOrphan: D.tech.filter(x => x.t.length && !techMo(x).size)
   };
 }
 export const blocking = d => d.dupRefs.length + d.noType.filter(p => p.type && !TY(p.type)).length;
-export const issueCount = d => d.dupRefs.length + d.unassigned.length + d.chk.length + d.badRef.length + d.noType.length + d.noParts.length + d.noSerie.length + d.noCode.length + d.emptyS.length + d.dupCodes.length;
+export const issueCount = d => d.dupRefs.length + d.unassigned.length + d.chk.length + d.badRef.length + d.noType.length + d.noParts.length + d.noSerie.length + d.noCode.length + d.emptyS.length + d.dupCodes.length + d.techOrphan.length;
 
 export function reviewView() {
   const d = reviewData(), n = issueCount(d);
@@ -363,6 +364,7 @@ export function reviewView() {
   h += sec('Modelos sin código', d.noCode, ml(d.noCode));
   h += sec('Series sin modelos', d.emptyS, `<div class="list">${d.emptyS.map(s => `<a class="row" href="${linkS(s)}"><b>${esc(s.name)}</b></a>`).join('')}</div>`);
   h += sec('Referencias sustituidas que siguen en el catálogo (informativo)', d.stale, partRows(d.stale), 'Se muestran con el aviso «sustituida por». Bórralas si ya no se deben pedir.');
+  h += sec('SC o consultas sin equipo (sus modelos o series ya no existen)', d.techOrphan, techRows(d.techOrphan), 'No aparecen en ningún modelo. Edítalas para asignarlas o bórralas.');
   h += sec('SC o consultas con piezas fuera del catálogo (informativo)', d.techRefs, techRows(d.techRefs));
   h += sec('Códigos repetidos en varios modelos', d.dupCodes, d.dupCodes.map(([c, a]) => `<div class="list"><div class="lh">${esc(c.toUpperCase())}</div>${a.map(modelRow).join('')}</div>`).join(''));
   return h + (n || d.origin.length ? '' : empty('Sin incidencias.'));

@@ -1,6 +1,6 @@
 // Diálogos del editor: serie, modelo, pieza, alta masiva, importar tabla, tipos, sesión y publicación.
 
-import { $, $$, esc, uid, cmp, nrm, cleanRef, parseTable, csvLine, download, isUrl, toast, lsSet } from './util.js';
+import { $, $$, esc, uid, cmp, nrm, cleanRef, parseTable, csvLine, download, isUrl, toast, lsSet, decodeText } from './util.js';
 import {
   st, K, ix, M, SR, P, TECH, serieOf, mo, partByRef, originOf, sysOf, sIdx, tIdx, modelsOfSerie, categories,
   ensureType, addT, setSerie, newModel, save, undo, migrate, emptyData
@@ -93,6 +93,7 @@ export function serieForm(s) {
       $('[data-del]', f)?.addEventListener('click', () => {
         if (!confirm(`¿Borrar la serie ${s.name}? Sus modelos y piezas se conservan: los modelos quedan sin serie y las piezas asignadas a la serie pasan a sus modelos.`)) return;
         st.D.parts.forEach(p => { if (p.t.some(t => t.k === 's' && t.id === s.id)) { p.t = p.t.filter(t => !(t.k === 's' && t.id === s.id)); addT(p, s.models.map(id => ({ k: 'm', id }))); } });
+        st.D.tech.forEach(x => { if (x.t.some(t => t.k === 's' && t.id === s.id)) { x.t = x.t.filter(t => !(t.k === 's' && t.id === s.id)); addT(x, s.models.map(id => ({ k: 'm', id }))); } });
         st.D.series = st.D.series.filter(x => x.id !== s.id);
         close(); changed('Serie borrada'); go('#/');
       });
@@ -129,7 +130,10 @@ export function modelForm(m, serieId) {
     extra: m ? '<button type="button" class="ghost bad" data-del>Borrar</button><button type="button" class="ghost" data-clone>Clonar</button>' : '',
     mount(f) {
       $('[data-del]', f)?.addEventListener('click', () => {
-        if (!confirm(`¿Borrar ${m.name}? Las referencias que solo le pertenecían pasarán a «Sin asignar».`)) return;
+        const only = st.D.tech.filter(x => x.t.length && x.t.every(t => t.k === 'm' && t.id === m.id));
+        if (!confirm(`¿Borrar ${m.name}? Las referencias que solo le pertenecían pasarán a «Sin asignar».${only.length ? `\n\nTambién se borrarán ${only.length} SC o consultas que solo aplicaban a este modelo.` : ''}`)) return;
+        st.D.tech = st.D.tech.filter(x => !only.includes(x));
+        st.D.tech.forEach(x => { x.t = x.t.filter(t => !(t.k === 'm' && t.id === m.id)); });
         st.D.parts.forEach(p => { p.t = p.t.filter(t => !(t.k === 'm' && t.id === m.id)); });
         st.D.series.forEach(s => { s.models = s.models.filter(x => x !== m.id); });
         st.D.models = st.D.models.filter(x => x.id !== m.id);
@@ -188,7 +192,7 @@ export function partForm(p, preset) {
         const dup = partByRef(ref);
         let h = '';
         if (dup && dup.id !== p?.id) h += `<p>La referencia ${esc(dup.ref)} ya existe (${esc(dup.type)}). Al guardar se fusionará con ella.</p>`;
-        const pend = o.filter(m => !$(`input[name=pt][value="m:${m.id}"]`, f)?.checked);
+        const pend = o.filter(m => !$(`input[name=pt][value="m:${CSS.escape(m.id)}"]`, f)?.checked);
         if (pend.length) h += `<p>El prefijo ${esc(ref.slice(0, 4))} corresponde a ${pend.map(m => `<b>${esc(m.name)}</b>`).join(', ')}. <button type="button" class="sm" data-orig>Marcar</button></p>`;
         sug.innerHTML = h; sug.hidden = !h;
       };
@@ -196,7 +200,7 @@ export function partForm(p, preset) {
       f.addEventListener('change', e => { if (e.target.name === 'pt') check(); });
       sug.addEventListener('click', e => {
         if (!e.target.hasAttribute('data-orig')) return;
-        originOf(cleanRef(f.elements.ref.value)).forEach(m => { const i = $(`input[name=pt][value="m:${m.id}"]`, f); if (i) i.checked = true; });
+        originOf(cleanRef(f.elements.ref.value)).forEach(m => { const i = $(`input[name=pt][value="m:${CSS.escape(m.id)}"]`, f); if (i) i.checked = true; });
         check();
       });
       check();
@@ -257,16 +261,20 @@ export function bulkForm(preset) {
 
 /* ---------- IMPORTAR TABLA / EXPORTAR CSV ---------- */
 
-export const FLAT_H = ['Serie', 'Categoría', 'Modelo', 'Códigos', 'Plataforma', 'Franja', 'Despiece', 'Sistema', 'Tipo', 'Referencia', 'Descripción', 'Uso', 'Notas', 'Verificar', 'Sustituye a'];
+export const FLAT_H = ['Serie', 'Categoría', 'Modelo', 'Códigos', 'Plataforma', 'Franja', 'Despiece', 'Sistema', 'Tipo', 'Referencia', 'Descripción', 'Uso', 'Notas', 'Verificar', 'Sustituye a', 'Asignación'];
 export function exportCsv(modelIds, name) {
   const only = modelIds ? new Set(modelIds) : null, rows = [];
   st.D.parts.forEach(p => {
     const tail = [sysOf(p.type), p.type, p.ref, p.name, p.hab ? 'Habitual' : 'Poco habitual', p.note, p.chk ? 'Sí' : '', p.old.join(', ')];
-    if (p.gen || !mo(p).size) { if (!only) rows.push(['', '', '', '', '', '', '', ...tail]); return; }
+    // «Asignación» permite reimportar sin perder el significado: General, Sin asignar o Toda la serie
+    if (p.gen || !mo(p).size) { if (!only) rows.push(['', '', '', '', '', '', '', ...tail, p.gen ? 'General' : 'Sin asignar']); return; }
+    const viaSerie = new Set();
+    p.t.filter(t => t.k === 's').forEach(t => { const s = SR(t.id); if (!s || (only && !s.models.some(id => only.has(id)))) return;
+      s.models.forEach(id => viaSerie.add(id)); rows.push([s.name, s.category, '', '', '', '', s.despiece, ...tail, 'Toda la serie']); });
     mo(p).forEach(id => {
-      if (only && !only.has(id)) return;
+      if ((only && !only.has(id)) || viaSerie.has(id)) return;
       const m = M(id), s = serieOf(id);
-      rows.push([s?.name || '', s?.category || '', m.name, m.codes.join(' / '), m.platform, m.franja, m.despiece, ...tail]);
+      rows.push([s?.name || '', s?.category || '', m.name, m.codes.join(' / '), m.platform, m.franja, m.despiece, ...tail, '']);
     });
   });
   rows.sort((a, b) => cmp(a[0], b[0]) || cmp(a[2], b[2]) || sIdx(a[8]) - sIdx(b[8]) || tIdx(a[8]) - tIdx(b[8]) || cmp(a[9], b[9]));
@@ -276,7 +284,7 @@ export function exportCsv(modelIds, name) {
 
 /** opts.noModel: 'gen' (pieza general) o 'none' (queda «Sin asignar»); opts.origin: asignar por prefijo de la referencia. */
 export function importRows(rows, create, opts = { noModel: 'gen', origin: false }) {
-  const MAP = { serie: 'serie', categoria: 'cat', familia: 'cat', modelo: 'model', codigo: 'codes', codigos: 'codes', plataforma: 'plat', franja: 'franja', despiece: 'dsp', tipo: 'type', referencia: 'ref', descripcion: 'name', uso: 'uso', notas: 'note', verificar: 'chk', sustituyea: 'old' };
+  const MAP = { serie: 'serie', categoria: 'cat', familia: 'cat', modelo: 'model', codigo: 'codes', codigos: 'codes', plataforma: 'plat', franja: 'franja', despiece: 'dsp', tipo: 'type', referencia: 'ref', descripcion: 'name', uso: 'uso', notas: 'note', verificar: 'chk', sustituyea: 'old', asignacion: 'asg' };
   const hdr = rows[0].map(nrm), hasHdr = hdr.includes('referencia');
   let col = {};
   if (hasHdr) { hdr.forEach((h, i) => { const k = MAP[h]; if (k && col[k] === undefined) col[k] = i; }); rows = rows.slice(1); }
@@ -288,10 +296,14 @@ export function importRows(rows, create, opts = { noModel: 'gen', origin: false 
     const ref = cleanRef(g(r, 'ref')); if (!ref) { res.omitidas++; return; }
     const mname = g(r, 'model'), type = g(r, 'type');
     let targets = [], gen = false;
-    if (!mname) {
+    const asg = nrm(g(r, 'asg'));
+    if (!mname && asg === 'todalaserie') {
+      const s = st.D.series.find(x => nrm(x.name) === nrm(g(r, 'serie')));
+      if (s) targets = [{ k: 's', id: s.id }]; else { res.faltan.add(g(r, 'serie')); res.omitidas++; return; }
+    } else if (!mname) {
       const o = opts.origin ? originOf(ref) : [];
       if (o.length) { targets = o.map(m => ({ k: 'm', id: m.id })); res.origen++; }
-      else gen = opts.noModel === 'gen';
+      else gen = asg === 'general' || (asg !== 'sinasignar' && opts.noModel === 'gen');
     } else {
       let m = st.D.models.find(x => nrm(x.name) === nrm(mname));
       if (!m) {
@@ -324,7 +336,7 @@ export function tableForm() {
     <label class="sw"><input type="checkbox" name="create" checked><span>Crear series y modelos que no existan</span></label>`, {
     wide: true, label: 'Importar',
     mount(f) {
-      f.elements.file.addEventListener('change', e => { const x = e.target.files[0]; if (!x) return; const rd = new FileReader(); rd.onload = () => { f.elements.txt.value = rd.result; }; rd.readAsText(x); });
+      f.elements.file.addEventListener('change', e => { const x = e.target.files[0]; if (!x) return; x.arrayBuffer().then(b => { f.elements.txt.value = decodeText(b); }); });
     },
     submit(f) {
       const rows = parseTable(f.elements.txt.value);
@@ -378,6 +390,11 @@ export function typesForm() {
       if (names.some(n => !n)) throw new Error('Hay tipos sin nombre');
       if (new Set(names.map(nrm)).size !== names.length) throw new Error('Hay nombres de tipo repetidos');
       const ren = {}; draft.forEach(t => { if (t.orig && t.orig !== t.name) ren[t.orig] = t.name; });
+      const kept = new Set(draft.map(t => t.orig).filter(Boolean));
+      const gone = st.D.types.map(t => t.name).filter(n => !kept.has(n));
+      const used = st.D.parts.filter(p => gone.includes(p.type));
+      if (used.length && !confirm(`${used.length} piezas usan tipos que vas a eliminar (${[...new Set(used.map(p => p.type))].join(', ')}). Quedarán sin tipo. ¿Continuar?`)) return false;
+      used.forEach(p => { p.type = ''; });
       st.D.parts.forEach(p => { if (ren[p.type]) p.type = ren[p.type]; });
       draft.forEach(t => { t.alias = t.alias.map(a => ren[a] || a); });
       st.D.types = draft.map(({ orig, ...t }) => t);
@@ -399,7 +416,7 @@ export function loginForm() {
     mount(f) { $('[data-local]', f)?.addEventListener('click', () => { enterLocal(); close(); refresh(); toast('Modo local: «Publicar» descarga data.json'); }); },
     async submit(f) {
       const r = await login(val(f, 'repo'), val(f, 'tok'), f.elements.rem.checked, false);
-      refresh(); toast(r === 'draft' ? 'Borrador recuperado' : 'Sesión de editor iniciada');
+      refresh(); toast(r === 'stale' ? 'Borrador recuperado. Hay una versión publicada más reciente: al publicar se avisará del conflicto.' : r === 'draft' ? 'Borrador recuperado' : 'Sesión de editor iniciada');
     }
   });
 }
@@ -564,7 +581,7 @@ export function techTableForm() {
     <textarea name="txt" rows="8" spellcheck="false" aria-label="Tabla"></textarea>
     <input type="file" name="file" accept=".csv,.tsv,.txt,text/csv,text/plain" aria-label="Archivo CSV">`, {
     wide: true, label: 'Importar',
-    mount(f) { f.elements.file.addEventListener('change', e => { const x = e.target.files[0]; if (!x) return; const rd = new FileReader(); rd.onload = () => { f.elements.txt.value = rd.result; }; rd.readAsText(x); }); },
+    mount(f) { f.elements.file.addEventListener('change', e => { const x = e.target.files[0]; if (!x) return; x.arrayBuffer().then(b => { f.elements.txt.value = decodeText(b); }); }); },
     submit(f) {
       const rows = parseTable(f.elements.txt.value);
       if (rows.length < 2) throw new Error('Hace falta la fila de cabecera y al menos una fila');
