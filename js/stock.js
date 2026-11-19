@@ -272,7 +272,7 @@ export async function exportStock() {
 export const SF = { f: 'all', q: '' };
 export function stockView() {
   const d = stockGet();
-  const intro = `<p class="mut small">Importa tu archivo de stock rule (.xlsx). Marca lo que quieras quitar, cambia cantidades o añade referencias, y genera un Excel con el mismo formato y los colores habituales (rojo eliminar, amarillo cambiar cantidad con la nota, verde añadir) para enviarlo al jefe de equipo. El archivo solo se guarda en este dispositivo.</p>`;
+  const intro = `<p class="mut small">Importa tu archivo de stock rule (.xlsx). Marca lo que quieras quitar, cambia el umbral (cantidad que se repone) o añade referencias, y genera un Excel con el mismo formato y los colores habituales (rojo eliminar, amarillo cambiar cantidad con la nota, verde añadir) para enviarlo al jefe de equipo. El archivo solo se guarda en este dispositivo.</p>`;
   if (!d) return `${intro}<div class="empty"><p>No hay ningún stock rule cargado.</p><p><button type="button" class="btn pri" data-sk="import">Importar stock rule (.xlsx)</button></p></div>`;
   const c = stockCounts(d);
   const segs = [['all', 'Todas', d.rows.length + d.added.length], ['chg', 'Cambios', c.del + c.mod + c.add], ['del', 'Eliminar', c.del], ['mod', 'Cantidad', c.mod], ['add', 'Añadir', c.add]];
@@ -290,7 +290,7 @@ export function stockView() {
     const stl = { keep: '', del: 'Eliminar', mod: `${it.qty} → ${it.newQty}`, add: 'Nueva', add0: 'Añadida' }[it.state];
     return `<div class="ii st-${it.state}" data-s="${esc(nrm(it.ref + ' ' + it.desc + ' ' + (p?.name || '')))}"><div class="ii-i">${it.state !== 'keep' ? `<span class="sk-t">${esc(stl)}</span>` : ''}<button type="button" class="ref" data-copy="${esc(it.ref)}" aria-label="Copiar ${esc(it.ref)}">${fmtRef(it.ref)}</button>
       <div class="small">${esc(it.desc || p?.name || '')}</div><div class="mut small">${p ? esc(p.type) + (m1 ? ' · ' + esc(m1.name) : '') : ''}${nw ? ` <a class="bd w" href="#/r/${encodeURIComponent(nw.ref)}">sustituida por ${esc(nw.ref)}</a>` : ''}</div></div>
-      <div class="ii-a"><div class="step"><button type="button" data-skq="-1" data-k="${it.key}" aria-label="Restar" ${it.state === 'del' ? 'disabled' : ''}>−</button><span>${it.newQty}</span><button type="button" data-skq="1" data-k="${it.key}" aria-label="Sumar" ${it.state === 'del' ? 'disabled' : ''}>+</button></div>
+      <div class="ii-a"><span class="mut small">Umbral</span><div class="step"><button type="button" data-skq="-1" data-k="${it.key}" aria-label="Restar" ${it.state === 'del' ? 'disabled' : ''}>−</button><span>${it.newQty}</span><button type="button" data-skq="1" data-k="${it.key}" aria-label="Sumar" ${it.state === 'del' ? 'disabled' : ''}>+</button></div>
       ${it.state === 'mod' ? `<button type="button" class="sm ghost" data-skr="${it.key}">Deshacer</button>` : ''}
       <button type="button" class="sm ${it.state === 'del' ? 'on' : 'ghost bad'}" data-skd="${it.key}">${it.isNew ? 'Quitar' : it.state === 'del' ? 'Mantener' : 'Eliminar'}</button></div></div>`;
   }).join('') || '<div class="empty"><p>Nada en este filtro.</p></div>'}</div>`;
