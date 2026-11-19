@@ -37,7 +37,7 @@ function fmtDate(serial, d1904, withTime) {
   return withTime && (d.getUTCHours() || d.getUTCMinutes()) ? `${s} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}` : s;
 }
 
-async function readXlsx(buf) {
+export async function readXlsx(buf) {
   const JSZip = await loadZip();
   let zip;
   try { zip = await JSZip.loadAsync(buf); } catch { throw new Error('No es un archivo .xlsx válido. Los .xls antiguos o protegidos con contraseña no se pueden abrir: guárdalo como .xlsx.'); }
