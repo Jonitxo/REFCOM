@@ -7,6 +7,9 @@ import {
 } from './store.js';
 import { LISTS, invGet, invQtyOf } from './inv.js';
 import { stockView, stockGet } from './stock.js';
+import { imgSrc } from './img.js';
+/** Foto de una pieza (si tiene). size: 'th' miniatura, 'lg' grande. Si aún no está publicada se oculta sola. */
+export const photo = (p, size = 'th') => { const u = imgSrc(p); return u ? `<img class="pimg ${size}" src="${esc(u)}" alt="Foto de ${esc(p.ref)}" loading="lazy" decoding="async" onerror="this.remove()">` : ''; };
 
 /* ---------- enlaces y piezas pequeñas ---------- */
 
@@ -17,6 +20,8 @@ const ed = () => st.editing;
 
 export const refBtn = (ref, cls = '') =>
   `<button type="button" class="ref ${cls}" data-copy="${esc(ref)}" aria-label="Copiar referencia ${esc(ref)}">${fmtRef(ref)}</button>`;
+/** Etiqueta de tipo de una pieza (los productos de limpieza no tienen tipo). */
+const ptag = p => (p.cl ? '<span class="tt cl">Limpieza</span>' : typeTag(p.type));
 const typeTag = t => { const ch = chOf(t); return `<span class="tt ${ch ? 'ch-' + ch : ''}">${esc(t || 'Sin tipo')}</span>`; };
 const badges = p => { const n = supersededBy(p.ref); return (n ? `<a class="bd w" href="${linkR(n.ref)}">sustituida por ${esc(n.ref)}</a>` : '') + (p.hab ? '' : '<span class="bd o">poco habitual</span>') + (p.chk ? '<span class="bd w">verificar</span>' : ''); };
 const oldNote = p => (p.old.length ? `<span>Sustituye a ${p.old.map(esc).join(', ')}</span>` : '');
@@ -95,7 +100,7 @@ export function homeView(cat) {
   let h = '';
   const f = favs(), fm = f.m.map(M).filter(Boolean), fp = f.p.map(id => ix.P.get(id)).filter(Boolean);
   const rec = lsGet(K.rec, []).map(M).filter(Boolean);
-  if (fm.length || fp.length) h += `<section class="blk"><h2 class="h">Favoritos</h2><div class="wrap">${fm.map(mchip).join('')}${fp.map(p => `<span class="chip">${typeTag(p.type)}${refBtn(p.ref)}</span>`).join('')}</div></section>`;
+  if (fm.length || fp.length) h += `<section class="blk"><h2 class="h">Favoritos</h2><div class="wrap">${fm.map(mchip).join('')}${fp.map(p => `<span class="chip">${ptag(p)}${refBtn(p.ref)}</span>`).join('')}</div></section>`;
   if (rec.length) h += `<section class="blk"><h2 class="h">Recientes</h2><div class="wrap">${rec.map(mchip).join('')}</div></section>`;
 
   if (!D.series.length && !D.models.length) {
@@ -111,9 +116,9 @@ export function homeView(cat) {
   }).join('') + '</div></section>';
   const free = D.models.filter(m => !serieOf(m.id));
   if (free.length && !cat) h += `<section class="blk"><h2 class="h">Modelos sin serie</h2><div class="list">${free.map(modelRow).join('')}</div></section>`;
-  const gen = D.parts.filter(p => p.gen).length, un = D.parts.filter(p => !p.gen && !mo(p).size).length;
+  const gen = D.parts.filter(p => p.gen).length, un = D.parts.filter(p => !p.gen && !p.cl && !mo(p).size).length, cln = D.parts.filter(p => p.cl).length;
   h += `<p class="small"><a href="#/ayuda">Cómo se usa</a></p>`;
-  if (gen || un) h += `<section class="blk"><div class="list">${gen ? `<a class="row" href="#/gen"><b>Generales y consumibles</b><span class="n">${gen}</span></a>` : ''}${un && ed() ? `<a class="row" href="#/un"><b>Sin asignar</b><span class="n">${un}</span></a>` : ''}</div></section>`;
+  if (gen || un || cln || ed()) h += `<section class="blk"><div class="list"><a class="row" href="#/limpieza"><b>Productos de limpieza</b><span class="n">${cln}</span></a>${gen ? `<a class="row" href="#/gen"><b>Generales y consumibles</b><span class="n">${gen}</span></a>` : ''}${un && ed() ? `<a class="row" href="#/un"><b>Sin asignar</b><span class="n">${un}</span></a>` : ''}</div></section>`;
   return h;
 }
 
@@ -135,7 +140,7 @@ export function serieView(s, view) {
   if (view === 'ov') return h + filtersHTML() + overviewSerie(s, ms, false);
   if (view === 'matrix') return h + filtersHTML() + matrixHTML(ms, s);
   h += ms.length ? `<div class="list">${ms.map(modelRow).join('')}</div>` : empty('Sin modelos.' + (ed() ? ' Usa «+ Modelo».' : ''));
-  if (com.length) h += `<section class="blk"><h2 class="h">Común a toda la serie</h2><div class="wrap">${com.map(p => `<span class="chip">${typeTag(p.type)}${refBtn(p.ref)}</span>`).join('')}</div></section>`;
+  if (com.length) h += `<section class="blk"><h2 class="h">Común a toda la serie</h2><div class="wrap">${com.map(p => `<span class="chip">${ptag(p)}${refBtn(p.ref)}</span>`).join('')}</div></section>`;
   return h;
 }
 
@@ -164,7 +169,7 @@ export function modelView(m) {
 function partCard(p, m, s) {
   const others = [...mo(p)].filter(id => id !== m?.id).length;
   const meta = [originNote(p, m?.id), oldNote(p), others ? `<a href="${linkR(p.ref)}">Compartida con ${others} modelo${others > 1 ? 's' : ''}</a>` : '', s && isCommon(p, s) ? '<span>Común a la serie</span>' : ''].filter(Boolean).join(' · ');
-  return `<article class="pc"><div class="pc-h">${typeTag(p.type)}${badges(p)}</div>${refBtn(p.ref, 'big')}${p.name || p.note ? `<div class="pc-d">${esc(p.name)}${p.name && p.note ? ' · ' : ''}<span class="mut">${esc(p.note)}</span></div>` : ''}${meta ? `<div class="pc-m">${meta}</div>` : ''}<div class="pc-a">${invBtn('pedir', p.ref)}${invBtn('tengo', p.ref)}<a class="sm ghost btn" href="${linkR(p.ref)}">Detalle</a>${editBtn('editPart', p.id)}</div></article>`;
+  return `<article class="pc ${p.img ? 'has-img' : ''}">${p.img ? `<a class="pc-img" href="${linkR(p.ref)}" aria-label="Ver foto de ${esc(p.ref)}">${photo(p)}</a>` : ''}<div class="pc-h">${ptag(p)}${badges(p)}</div>${refBtn(p.ref, 'big')}${p.name || p.note ? `<div class="pc-d">${esc(p.name)}${p.name && p.note ? ' · ' : ''}<span class="mut">${esc(p.note)}</span></div>` : ''}${meta ? `<div class="pc-m">${meta}</div>` : ''}<div class="pc-a">${invBtn('pedir', p.ref)}${invBtn('tengo', p.ref)}<a class="sm ghost btn" href="${linkR(p.ref)}">Detalle</a>${editBtn('editPart', p.id)}</div></article>`;
 }
 
 /* ---------- REFERENCIA ---------- */
@@ -184,12 +189,13 @@ export function refView(ref) {
     const s = SR(sid), whole = s && s.models.length > 1 && s.models.length === ms.length;
     return `<div class="list"><div class="lh">${s ? `<a href="${linkS(s)}">${esc(s.name)}</a>${whole ? ' <span class="bd c">toda la serie</span>' : ''}` : 'Sin serie'}</div>${ms.sort((a, b) => cmp(a.name, b.name)).map(modelRow).join('')}</div>`;
   }).join('');
-  return `<header class="ph"><div class="crumb">${typeTag(p.type)} ${badges(p)}</div>
+  return `<header class="ph"><div class="crumb">${ptag(p)} ${badges(p)}</div>
     <h1 class="refh">${refBtn(p.ref, 'huge')}</h1>
     ${p.name ? `<div class="pc-d big">${esc(p.name)}</div>` : ''}${p.note ? `<div class="mut">${esc(p.note)}</div>` : ''}
     <div class="pc-m">${[originNote(p), oldNote(p)].filter(Boolean).join(' · ')}</div>
     <div class="acts"><button type="button" class="btn pri" data-copy="${esc(p.ref)}">Copiar</button>${invBtn('pedir', p.ref)}${invBtn('tengo', p.ref)}${invBtn('devolver', p.ref)}<button type="button" class="sm ghost ${fv ? 'on' : ''}" data-fav="p" data-id="${esc(p.id)}" aria-pressed="${fv}">${fv ? '★' : '☆'} Favorita</button>${reportBtn('Referencia ' + p.ref, `Referencia: ${p.ref} (${p.type})\nEnlace: ${location.origin + location.pathname + linkR(p.ref)}\n\nError detectado: `)}${editBtn('editPart', p.id)}</div></header>
-    <section class="blk"><h2 class="h">${p.gen ? 'Pieza general (sin modelo)' : `Aplica a ${set.size} modelo${set.size === 1 ? '' : 's'}`}</h2>${blocks || (p.gen ? '' : empty('Sin modelos asignados'))}</section>`;
+    ${p.img ? `<figure class="pfig">${photo(p, 'lg')}</figure>` : ''}
+    ${p.cl ? '' : `<section class="blk"><h2 class="h">${p.gen ? 'Pieza general (sin modelo)' : `Aplica a ${set.size} modelo${set.size === 1 ? '' : 's'}`}</h2>${blocks || (p.gen ? '' : empty('Sin modelos asignados'))}</section>`}`;
 }
 
 /* ---------- LISTA DE PIEZAS (búsqueda, generales, revisión) ---------- */
@@ -197,7 +203,7 @@ export function refView(ref) {
 function partRows(list, limit = 150) {
   const total = list.length;
   list = [...list].sort(byTypeRef).slice(0, limit);
-  return `<div class="plist">${list.map(p => `<div class="pr"><div class="pr-h">${typeTag(p.type)}${badges(p)}${editBtn('editPart', p.id)}</div><div class="pr-r">${refBtn(p.ref)}<a class="go" href="${linkR(p.ref)}" aria-label="Detalle de ${esc(p.ref)}">›</a></div>${p.name ? `<div class="pc-d">${esc(p.name)}</div>` : ''}${p.gen ? '' : `<div class="pr-m">${appliesTo(p)}</div>`}</div>`).join('')}</div>${total > limit ? `<p class="mut">Mostrando ${limit} de ${total}. Afina la búsqueda.</p>` : ''}`;
+  return `<div class="plist">${list.map(p => `<div class="pr ${p.img ? 'has-img' : ''}">${p.img ? `<a class="pc-img" href="${linkR(p.ref)}" aria-label="Foto de ${esc(p.ref)}">${photo(p)}</a>` : ''}<div class="pr-h">${ptag(p)}${badges(p)}${editBtn('editPart', p.id)}</div><div class="pr-r">${refBtn(p.ref)}<a class="go" href="${linkR(p.ref)}" aria-label="Detalle de ${esc(p.ref)}">›</a></div>${p.name ? `<div class="pc-d">${esc(p.name)}</div>` : ''}${p.gen || p.cl ? '' : `<div class="pr-m">${appliesTo(p)}</div>`}</div>`).join('')}</div>${total > limit ? `<p class="mut">Mostrando ${limit} de ${total}. Afina la búsqueda.</p>` : ''}`;
 }
 
 export function searchView(q) {
@@ -220,7 +226,7 @@ export function searchView(q) {
 }
 
 export function genView(kind) {
-  const list = st.D.parts.filter(p => (kind === 'gen' ? p.gen : !p.gen && !mo(p).size) && pass(p));
+  const list = st.D.parts.filter(p => (kind === 'gen' ? p.gen : !p.gen && !p.cl && !mo(p).size) && pass(p));
   return `<header class="ph"><div class="crumb"><a href="#/">Series</a></div><h1>${kind === 'gen' ? 'Generales y consumibles' : 'Sin asignar'}</h1><div class="meta">${kind === 'gen' ? 'Piezas que no dependen de un modelo' : 'Referencias sin modelo: edítalas para asignarlas'}</div></header>` +
     (list.length ? partRows(list) : empty('Vacío.'));
 }
@@ -330,10 +336,11 @@ export function reviewData() {
   const refs = new Map(); D.parts.forEach(p => { const k = nrm(p.ref); (refs.get(k) || refs.set(k, []).get(k)).push(p); });
   return {
     dupRefs: [...refs.values()].filter(a => a.length > 1).flat(),
-    unassigned: D.parts.filter(p => !p.gen && !mo(p).size),
+    unassigned: D.parts.filter(p => !p.gen && !p.cl && !mo(p).size),
     chk: D.parts.filter(p => p.chk),
-    badRef: D.parts.filter(p => !p.gen && !/^[A-Z0-9]{8}$/.test(p.ref)),
-    noType: D.parts.filter(p => !p.type || !TY(p.type)),
+    badRef: D.parts.filter(p => !p.gen && !p.cl && !/^[A-Z0-9]{8}$/.test(p.ref)),
+    noType: D.parts.filter(p => !p.cl && (!p.type || !TY(p.type))),
+    noPhoto: D.parts.filter(p => p.hab && !p.img && (p.cl || mo(p).size)),
     origin: D.parts.filter(p => { const o = originOf(p.ref); return o.length && !p.gen && mo(p).size && !o.some(m => mo(p).has(m.id)); }),
     noParts: D.models.filter(m => !used.has(m.id)),
     noSerie: D.models.filter(m => !serieOf(m.id)),
@@ -359,6 +366,7 @@ export function reviewView() {
   h += sec('Formato inusual (no son 8 caracteres)', d.badRef, partRows(d.badRef));
   h += sec('Tipo vacío o fuera del catálogo', d.noType, partRows(d.noType));
   h += sec('Origen no asignado (informativo)', d.origin, partRows(d.origin), 'El prefijo coincide con el código de un modelo al que la pieza no está asignada. Puede ser correcto.');
+  h += sec('Habituales sin foto (informativo)', d.noPhoto, partRows(d.noPhoto, 60), 'Una foto ayuda a confirmar la pieza antes de pedirla. «Fotos en bloque» asigna varias de golpe si los archivos se llaman como la referencia.');
   h += sec('Modelos sin referencias', d.noParts, ml(d.noParts));
   h += sec('Modelos sin serie', d.noSerie, ml(d.noSerie));
   h += sec('Modelos sin código', d.noCode, ml(d.noCode));
@@ -426,4 +434,18 @@ export function helpView() {
     ${tip('Sin cobertura', 'La web funciona sin conexión con la última versión cargada. Instálala como app desde el menú del navegador («Añadir a pantalla de inicio»).')}
     ${tip('Algo falta o está mal', '«Avisar de un error» en el modelo o la referencia envía el aviso al responsable con el enlace.')}
   </div>`;
+}
+
+/* ---------- PRODUCTOS DE LIMPIEZA ---------- */
+
+export function cleanView() {
+  const list = st.D.parts.filter(p => p.cl).sort((a, b) => cmp(a.name || a.ref, b.name || b.ref));
+  let h = `<header class="ph"><div class="crumb"><a href="#/">Series</a></div><h1>Productos de limpieza</h1><div class="meta">${list.length} producto${list.length === 1 ? '' : 's'}</div>
+    ${ed() ? '<div class="acts"><button type="button" class="sm ghost" data-act="newClean">+ Producto</button><button type="button" class="sm ghost" data-act="bulkClean">+ Varios</button><button type="button" class="sm ghost" data-act="bulkPhotos">Fotos en bloque</button></div>' : ''}</header>`;
+  if (!list.length) return h + empty(ed() ? 'Añade los productos con «+ Producto» o pega una lista con «+ Varios».' : 'Todavía no hay productos.');
+  h += `<input type="search" class="tf" placeholder="Buscar producto o referencia" aria-label="Buscar producto o referencia">`;
+  return h + `<div class="cgrid">${list.map(p => `<article class="cc" data-s="${esc(nrm(p.ref + ' ' + p.name + ' ' + p.note))}">
+    <a class="cc-img" href="${linkR(p.ref)}" aria-label="Detalle de ${esc(p.name || p.ref)}">${photo(p) || '<span class="noimg" aria-hidden="true">Sin foto</span>'}</a>
+    <div class="cc-b"><b class="cc-n">${esc(p.name || '—')}</b>${refBtn(p.ref)}${p.note ? `<div class="mut small">${esc(p.note)}</div>` : ''}
+    <div class="pc-a">${invBtn('pedir', p.ref)}${invBtn('tengo', p.ref)}${editBtn('editPart', p.id)}</div></div></article>`).join('')}</div>`;
 }

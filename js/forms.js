@@ -5,8 +5,10 @@ import {
   st, K, ix, M, SR, P, TECH, serieOf, mo, partByRef, originOf, sysOf, sIdx, tIdx, modelsOfSerie, categories,
   ensureType, addT, setSerie, newModel, save, undo, migrate, emptyData
 } from './store.js';
-import { login, enterLocal, localOK, savedRepo, publish, diffLines, discard, logout, historyUrl } from './github.js';
+import { login, enterLocal, localOK, savedRepo, publish, diffLines, discard, logout, historyUrl, photoChanges } from './github.js';
+import { loadZip } from './stock.js';
 import { reviewData, blocking, mine, UI } from './views.js';
+import { compress, previewOf, fileName, imgName, imgSrc, putPending, fmtKB, CFG as IMGCFG } from './img.js';
 
 let refresh = () => {};
 export const setRefresh = fn => { refresh = fn; };
@@ -168,6 +170,7 @@ export function modelForm(m, serieId) {
 /* ---------- PIEZA ---------- */
 
 export function partForm(p, preset) {
+  if (p?.cl) return cleanForm(p);
   const targets = p ? p.t : (preset || []);
   openDialog(p ? 'Editar pieza' : 'Nueva pieza', `
     <div class="two">${fld('Referencia', `<input name="ref" required value="${esc(p?.ref || '')}" autocapitalize="characters" autocomplete="off" spellcheck="false">`)}
@@ -176,6 +179,7 @@ export function partForm(p, preset) {
     ${fld('Descripción', `<input name="name" value="${esc(p?.name || '')}">`)}
     ${fld('Notas', `<input name="note" value="${esc(p?.note || '')}">`)}
     ${fld('Sustituye a (referencias anteriores, separadas por coma)', `<input name="old" value="${esc((p?.old || []).join(', '))}" autocapitalize="characters" spellcheck="false" placeholder="Opcional">`)}
+    ${photoFieldHTML(p)}
     <div class="checks"><label class="sw"><input type="checkbox" name="hab" ${p && !p.hab ? '' : 'checked'}><span>Habitual</span></label>
     <label class="sw"><input type="checkbox" name="chk" ${p?.chk ? 'checked' : ''}><span>Por verificar</span></label>
     <label class="sw"><input type="checkbox" name="gen" ${p?.gen ? 'checked' : ''}><span>General (sin modelo)</span></label></div>
@@ -184,6 +188,7 @@ export function partForm(p, preset) {
     extra: p ? '<button type="button" class="ghost bad" data-del>Borrar</button>' : '',
     mount(f) {
       bindPickFilter(f);
+      photoMount(f, p);
       const tg = $('.tg', f), sug = $('.sug', f);
       const gen = () => { tg.hidden = f.elements.gen.checked; };
       f.elements.gen.addEventListener('change', gen); gen();
@@ -209,7 +214,7 @@ export function partForm(p, preset) {
         st.D.parts = st.D.parts.filter(x => x.id !== p.id); close(); changed('Referencia borrada');
       });
     },
-    submit(f) {
+    async submit(f) {
       const ref = cleanRef(val(f, 'ref')), type = val(f, 'type'), gen = f.elements.gen.checked;
       const t = gen ? [] : readPick(f, 'pt');
       if (!gen && !t.length && !confirm('No has marcado ningún modelo ni serie: quedará en «Sin asignar». ¿Guardar igualmente?')) return false;
@@ -222,6 +227,9 @@ export function partForm(p, preset) {
         if (p) st.D.parts = st.D.parts.filter(x => x.id !== p.id);
       } else if (p) Object.assign(P(p.id), d);
       else st.D.parts.push({ id: uid(), ...d });
+      const target = dup || (p ? P(p.id) : st.D.parts[st.D.parts.length - 1]);
+      if (dup && p?.img && !dup.img) dup.img = p.img;
+      await photoApply(f, target);
       changed(dup ? 'Fusionada con ' + dup.ref : 'Referencia guardada');
     }
   });
@@ -267,7 +275,7 @@ export function exportCsv(modelIds, name) {
   st.D.parts.forEach(p => {
     const tail = [sysOf(p.type), p.type, p.ref, p.name, p.hab ? 'Habitual' : 'Poco habitual', p.note, p.chk ? 'Sí' : '', p.old.join(', ')];
     // «Asignación» permite reimportar sin perder el significado: General, Sin asignar o Toda la serie
-    if (p.gen || !mo(p).size) { if (!only) rows.push(['', '', '', '', '', '', '', ...tail, p.gen ? 'General' : 'Sin asignar']); return; }
+    if (p.gen || p.cl || !mo(p).size) { if (!only) rows.push(['', '', '', '', '', '', '', ...tail, p.cl ? 'Limpieza' : p.gen ? 'General' : 'Sin asignar']); return; }
     const viaSerie = new Set();
     p.t.filter(t => t.k === 's').forEach(t => { const s = SR(t.id); if (!s || (only && !s.models.some(id => only.has(id)))) return;
       s.models.forEach(id => viaSerie.add(id)); rows.push([s.name, s.category, '', '', '', '', s.despiece, ...tail, 'Toda la serie']); });
@@ -297,7 +305,8 @@ export function importRows(rows, create, opts = { noModel: 'gen', origin: false 
     const mname = g(r, 'model'), type = g(r, 'type');
     let targets = [], gen = false;
     const asg = nrm(g(r, 'asg'));
-    if (!mname && asg === 'todalaserie') {
+    if (!mname && asg === 'limpieza') { targets = []; }
+    else if (!mname && asg === 'todalaserie') {
       const s = st.D.series.find(x => nrm(x.name) === nrm(g(r, 'serie')));
       if (s) targets = [{ k: 's', id: s.id }]; else { res.faltan.add(g(r, 'serie')); res.omitidas++; return; }
     } else if (!mname) {
@@ -323,7 +332,7 @@ export function importRows(rows, create, opts = { noModel: 'gen', origin: false 
     const ex = byRef.get(nrm(ref));
     const old = g(r, 'old').split(/[,;\n]+/).map(cleanRef).filter(x => x && nrm(x) !== nrm(ref));
     if (ex) { addT(ex, targets); ex.old = [...new Set([...ex.old, ...old])]; if (!ex.name && g(r, 'name')) ex.name = g(r, 'name'); if (!ex.type && type) ex.type = type; res.ampliadas++; }
-    else { const np = { id: uid(), ref, type, name: g(r, 'name'), note: g(r, 'note'), hab: !/^poco|^ocas/i.test(g(r, 'uso')), chk: /^(s[ií]|x|1|true)$/i.test(g(r, 'chk')), gen, old, t: targets }; st.D.parts.push(np); byRef.set(nrm(ref), np); res.nuevas++; }
+    else { const np = { id: uid(), ref, type: asg === 'limpieza' ? '' : type, cl: asg === 'limpieza', img: '', name: g(r, 'name'), note: g(r, 'note'), hab: !/^poco|^ocas/i.test(g(r, 'uso')), chk: /^(s[ií]|x|1|true)$/i.test(g(r, 'chk')), gen, old, t: targets }; st.D.parts.push(np); byRef.set(nrm(ref), np); res.nuevas++; }
   });
   return res;
 }
@@ -421,9 +430,19 @@ export function loginForm() {
   });
 }
 
-export function publishForm() {
-  if (st.mode === 'local') { st.D.updated = new Date().toISOString(); download('data.json', JSON.stringify(st.D, null, 1), 'application/json'); toast('data.json descargado: súbelo al repositorio'); return; }
+export async function publishForm() {
+  const ph = await photoChanges();
+  if (st.mode === 'local') {
+    st.D.updated = new Date().toISOString(); download('data.json', JSON.stringify(st.D, null, 1), 'application/json');
+    if (ph.up.length) { // modo local: las fotos se descargan en un .zip con la carpeta img/
+      const JSZip = await loadZip(), z = new JSZip(); ph.up.forEach(x => z.file('img/' + x.name, x.blob));
+      download('fotos.zip', await z.generateAsync({ type: 'blob' }), 'application/zip');
+    }
+    toast('Descargado: súbelo al repositorio' + (ph.up.length ? ' (descomprime fotos.zip en la raíz)' : '')); return;
+  }
   const lines = diffLines(JSON.parse(st.pubStr), st.D);
+  if (ph.up.length) lines.push(`Fotos: ${ph.up.length} nueva${ph.up.length > 1 ? 's' : ''} (${fmtKB(ph.up.reduce((n, x) => n + x.blob.size, 0))})`);
+  if (ph.del.length) lines.push(`Fotos retiradas: ${ph.del.length}`);
   if (!lines.length) { toast('No hay cambios que publicar'); return; }
   const rv = reviewData(), b = blocking(rv);
   openDialog('Publicar cambios', `<ul class="ul">${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>
@@ -451,8 +470,9 @@ export function editMenu(ctx) {
     <div class="grid2">
       <button type="button" class="pri" data-m="part">+ Pieza</button><button type="button" data-m="bulk">+ Varias</button>
       <button type="button" data-m="model">+ Modelo</button><button type="button" data-m="serie">+ Serie</button>
-      <button type="button" data-m="tech">+ SC / consulta</button><button type="button" data-m="contact">Correo de avisos</button>
-      <button type="button" class="ok" data-m="pub" ${st.dirty || st.mode === 'local' ? '' : 'disabled'}>${st.mode === 'local' ? 'Descargar data.json' : 'Publicar'}</button><button type="button" data-m="undo" ${st.undo.length ? '' : 'disabled'}>Deshacer</button>
+      <button type="button" data-m="tech">+ SC / consulta</button><button type="button" data-m="clean">+ Limpieza</button>
+      <button type="button" data-m="photos">Fotos en bloque</button><button type="button" data-m="contact">Correo de avisos</button>
+      <button type="button" class="ok" data-m="pub">${st.mode === 'local' ? 'Descargar data.json' : 'Publicar'}</button><button type="button" data-m="undo" ${st.undo.length ? '' : 'disabled'}>Deshacer</button>
       <button type="button" data-m="rev">Revisión</button><button type="button" data-m="table">Importar tabla</button>
       <button type="button" data-m="types">Tipos de pieza</button><button type="button" data-m="csv">Exportar CSV</button>
       <button type="button" data-m="json">Exportar JSON</button><button type="button" data-m="ijson">Importar JSON</button>
@@ -472,6 +492,8 @@ export function editMenu(ctx) {
         else if (a === 'serie') serieForm(null);
         else if (a === 'tech') techForm(null, pre.length ? pre : []);
         else if (a === 'contact') contactForm();
+        else if (a === 'clean') cleanForm(null);
+        else if (a === 'photos') bulkPhotosForm();
         else if (a === 'pub') publishForm();
         else if (a === 'undo') { if (undo()) { refresh(); toast('Cambio deshecho'); } }
         else if (a === 'rev') go('#/rev');
@@ -644,6 +666,195 @@ export function sheetToCatalogForm(sheet) {
       if (r.omitidas) out.push(`${r.omitidas} omitidas`);
       changed('Catálogo: ' + out.join(', '));
       if (r.faltan.size) alert('Modelos que no existen (filas omitidas): ' + [...r.faltan].slice(0, 10).join(', ') + '. Marca «Crear los modelos que no existan» o créalos antes.');
+    }
+  });
+}
+
+/* ---------- FOTO DE UNA REFERENCIA ---------- */
+// Se elige o se hace con la cámara, se pega (Ctrl+V) o se arrastra. Se recorta (automático o a mano),
+// se comprime y se nombra con la referencia al guardar. Se sube con «Publicar».
+
+function photoFieldHTML(p) {
+  const src = p ? imgSrc(p) : '';
+  return `<div class="fld ph-f"><span>Foto (opcional)</span>
+    <div class="ph-box" tabindex="0" aria-label="Foto: pulsa para elegir, pega o arrastra una imagen">
+      ${src ? `<img class="ph-cur" src="${esc(src)}" alt="Foto actual de ${esc(p.ref)}">` : '<span class="mut small ph-ph">Sin foto. Haz una foto, elígela de la galería, pégala (Ctrl+V) o arrástrala aquí.</span>'}
+      <canvas class="ph-cv" hidden></canvas>
+    </div>
+    <div class="ph-info mut small" aria-live="polite"></div>
+    <div class="acts ph-acts"><label class="btn sm"><input type="file" name="photo" accept="image/*" hidden>${src ? 'Cambiar foto' : 'Hacer o elegir foto'}</label>
+      <button type="button" class="sm ghost" data-ph="crop" hidden>Recortar a mano</button><button type="button" class="sm ghost" data-ph="full" hidden>Sin recorte</button><button type="button" class="sm ghost" data-ph="auto" hidden>Recorte automático</button>
+      ${src ? '<button type="button" class="sm ghost bad" data-ph="del">Quitar foto</button>' : ''}</div></div>`;
+}
+
+function photoMount(f, p) {
+  const box = $('.ph-box', f), cv = $('.ph-cv', f), info = $('.ph-info', f), S = { file: null, prev: null, crop: null, mode: 'auto', result: null, removed: false, busy: null, drag: null };
+  f._photo = S;
+  const btn = n => $(`[data-ph="${n}"]`, f);
+  const draw = () => {
+    if (!S.prev) return;
+    const c = S.prev.canvas; cv.width = c.width; cv.height = c.height;
+    const x = cv.getContext('2d'); x.drawImage(c, 0, 0);
+    const r = S.drag || S.crop;
+    if (r) {
+      x.fillStyle = 'rgba(0,0,0,.5)';
+      const R = { x: r.x * c.width, y: r.y * c.height, w: r.w * c.width, h: r.h * c.height };
+      x.fillRect(0, 0, c.width, R.y); x.fillRect(0, R.y + R.h, c.width, c.height - R.y - R.h);
+      x.fillRect(0, R.y, R.x, R.h); x.fillRect(R.x + R.w, R.y, c.width - R.x - R.w, R.h);
+      x.strokeStyle = '#ffd400'; x.lineWidth = Math.max(2, c.width / 250); x.strokeRect(R.x, R.y, R.w, R.h);
+    }
+  };
+  let tmr;
+  const recompress = () => {
+    clearTimeout(tmr);
+    tmr = setTimeout(async () => {
+      if (!S.file) return;
+      info.textContent = 'Comprimiendo…';
+      const job = compress(S.file, S.crop ? { crop: S.crop } : { trim: false });
+      S.busy = job;
+      try {
+        const r = await job; if (S.busy !== job) return;
+        S.result = r;
+        info.textContent = `${r.w}×${r.h} px · ${r.ext.toUpperCase()} calidad ${Math.round(r.q * 100)} · ${fmtKB(r.blob.size)} (original ${r.srcW}×${r.srcH}, ${fmtKB(r.srcSize)})`;
+      } catch (x) { S.result = null; info.textContent = x.message; }
+      finally { if (S.busy === job) S.busy = null; }
+    }, 150);
+  };
+  const setFile = async file => {
+    if (!file || !/^image\//.test(file.type || 'image/')) return;
+    info.textContent = 'Cargando…';
+    try {
+      S.file = file; S.removed = false; S.prev = await previewOf(file);
+      S.crop = S.prev.trim; S.mode = S.crop ? 'auto' : 'full';
+      $('.ph-cur', f)?.remove(); $('.ph-ph', f)?.remove(); cv.hidden = false;
+      btn('crop').hidden = false; btn('full').hidden = false; btn('auto').hidden = !S.prev.trim;
+      draw(); recompress();
+      if (S.prev.trim) info.textContent = 'Se han quitado los márgenes uniformes. Comprimiendo…';
+    } catch (x) { S.file = null; info.textContent = x.message; }
+  };
+  f.elements.photo.addEventListener('change', e => { setFile(e.target.files[0]); e.target.value = ''; });
+  f.addEventListener('paste', e => { const it = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/')); if (it) { e.preventDefault(); setFile(it.getAsFile()); } });
+  box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('over'); });
+  box.addEventListener('dragleave', () => box.classList.remove('over'));
+  box.addEventListener('drop', e => { e.preventDefault(); box.classList.remove('over'); setFile(e.dataTransfer.files[0]); });
+  box.addEventListener('click', e => { if (!S.file && e.target !== cv) f.elements.photo.click(); });
+  box.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !S.file) { e.preventDefault(); f.elements.photo.click(); } });
+  f.addEventListener('click', e => {
+    const a = e.target.closest('[data-ph]')?.dataset.ph; if (!a) return;
+    if (a === 'del') { S.removed = true; S.file = null; S.result = null; $('.ph-cur', f)?.remove(); cv.hidden = true; info.textContent = 'La foto se quitará al guardar.'; e.target.hidden = true; }
+    else if (a === 'full') { S.crop = null; S.mode = 'full'; draw(); recompress(); }
+    else if (a === 'auto') { S.crop = S.prev?.trim || null; S.mode = 'auto'; draw(); recompress(); }
+    else if (a === 'crop') { S.mode = 'manual'; info.textContent = 'Arrastra sobre la foto para marcar la zona que quieres conservar.'; }
+  });
+  // recorte manual: arrastrar un rectángulo sobre la vista previa (ratón o dedo)
+  const pt = e => { const r = cv.getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; };
+  let start = null;
+  cv.addEventListener('pointerdown', e => { if (!S.file) return; e.preventDefault(); cv.setPointerCapture(e.pointerId); start = pt(e); S.mode = 'manual'; });
+  cv.addEventListener('pointermove', e => { if (!start) return; const q = pt(e); S.drag = { x: Math.min(start.x, q.x), y: Math.min(start.y, q.y), w: Math.abs(q.x - start.x), h: Math.abs(q.y - start.y) }; draw(); });
+  cv.addEventListener('pointerup', () => {
+    if (!start) return; start = null;
+    if (S.drag && S.drag.w > 0.03 && S.drag.h > 0.03) { S.crop = S.drag; recompress(); }
+    S.drag = null; draw();
+  });
+}
+
+/** Aplica la foto del formulario a la pieza: la guarda pendiente con el nombre de la referencia. */
+async function photoApply(f, part) {
+  const S = f._photo; if (!S || !part) return;
+  if (S.busy) await S.busy;
+  if (S.removed && !S.result) { part.img = ''; return; }
+  if (S.file && !S.result) S.result = await compress(S.file, S.crop ? { crop: S.crop } : { trim: false });
+  if (S.result) {
+    const name = fileName(part.ref, S.result.ext);
+    await putPending(name, S.result.blob);
+    part.img = name + '?v=' + Date.now().toString(36);
+    return;
+  }
+  // sin foto nueva pero la referencia ha cambiado: la foto se renombra con la nueva referencia
+  const cur = imgName(part);
+  if (cur) {
+    const ext = cur.split('.').pop(), want = fileName(part.ref, ext);
+    if (want !== cur) {
+      try { const b = await (await fetch(imgSrc(part))).blob(); await putPending(want, b); part.img = want + '?v=' + Date.now().toString(36); }
+      catch { /* sin conexión: se mantiene el nombre anterior */ }
+    }
+  }
+}
+
+/* ---------- PRODUCTOS DE LIMPIEZA ---------- */
+
+export function cleanForm(p) {
+  openDialog(p ? 'Editar producto de limpieza' : 'Nuevo producto de limpieza', `
+    <div class="two">${fld('Referencia', `<input name="ref" required value="${esc(p?.ref || '')}" autocapitalize="characters" autocomplete="off" spellcheck="false">`)}
+    ${fld('Nombre', `<input name="name" required value="${esc(p?.name || '')}" placeholder="Limpiador de rodillos…">`)}</div>
+    ${fld('Notas', `<input name="note" value="${esc(p?.note || '')}" placeholder="Uso, formato…">`)}
+    ${photoFieldHTML(p)}`, {
+    extra: p ? '<button type="button" class="ghost bad" data-del>Borrar</button>' : '',
+    mount(f) {
+      photoMount(f, p);
+      $('[data-del]', f)?.addEventListener('click', () => { if (!confirm(`¿Borrar ${p.ref}?`)) return; st.D.parts = st.D.parts.filter(x => x.id !== p.id); close(); changed('Producto borrado'); });
+    },
+    async submit(f) {
+      const ref = cleanRef(val(f, 'ref')), dup = st.D.parts.find(x => nrm(x.ref) === nrm(ref) && x.id !== p?.id);
+      if (dup) throw new Error(`La referencia ${dup.ref} ya existe${dup.cl ? ' como producto de limpieza' : ' como pieza'}.`);
+      const d = { ref, name: val(f, 'name'), note: val(f, 'note'), cl: true, gen: false, t: [], type: '' };
+      let x = p && P(p.id);
+      if (x) Object.assign(x, d); else { x = { id: uid(), hab: true, chk: false, old: [], img: '', ...d }; st.D.parts.push(x); }
+      await photoApply(f, x);
+      changed('Producto guardado');
+    }
+  });
+}
+
+export function cleanBulkForm() {
+  openDialog('Añadir varios productos de limpieza', `
+    ${fld('Uno por línea: REFERENCIA ; nombre', '<textarea name="txt" rows="8" required spellcheck="false" placeholder="D0BN9100 ; Limpiador de rodillos"></textarea>')}
+    <p class="mut small">También se puede pegar desde Excel (dos columnas). Si la referencia ya existe como producto de limpieza, se actualiza el nombre.</p>`, {
+    label: 'Añadir',
+    submit(f) {
+      let n = 0, u = 0, skip = [];
+      parseTable(f.elements.txt.value.replace(/;/g, '\t')).forEach(r => {
+        const ref = cleanRef(r[0]), name = String(r[1] || '').trim();
+        if (!ref || /^referencia$/i.test(ref)) return;
+        const ex = st.D.parts.find(x => nrm(x.ref) === nrm(ref));
+        if (ex && !ex.cl) { skip.push(ref); return; }
+        if (ex) { if (name) ex.name = name; u++; }
+        else { st.D.parts.push({ id: uid(), ref, type: '', name, note: '', hab: true, chk: false, gen: false, cl: true, img: '', old: [], t: [] }); n++; }
+      });
+      changed(`${n} nuevos, ${u} actualizados`);
+      if (skip.length) alert('Ya existen como piezas (no se han cambiado): ' + skip.slice(0, 10).join(', '));
+    }
+  });
+}
+
+/* ---------- FOTOS EN BLOQUE ---------- */
+
+export function bulkPhotosForm() {
+  openDialog('Fotos en bloque', `<p class="mut small">Elige varias imágenes cuyo nombre sea la referencia (D0E33060.jpg, D0BK-2205.png…). Cada una se comprime (lado mayor ${IMGCFG.max} px, hasta ${Math.round(IMGCFG.target / 1024)} KB), se recortan los márgenes uniformes y se asigna a su referencia. Se suben con «Publicar».</p>
+    <input type="file" name="files" accept="image/*" multiple aria-label="Imágenes">
+    <div class="bp-res mut small" aria-live="polite"></div>`, {
+    label: 'Procesar',
+    async submit(f) {
+      const files = [...f.elements.files.files];
+      if (!files.length) throw new Error('Elige las imágenes');
+      const out = $('.bp-res', f), ok = [], miss = [], bad = [];
+      let total = 0, orig = 0;
+      for (const [i, file] of files.entries()) {
+        out.textContent = `Procesando ${i + 1} de ${files.length}: ${file.name}`;
+        const base = file.name.replace(/\.[^.]+$/, '');
+        const part = st.D.parts.find(x => nrm(x.ref) === nrm(base)) || st.D.parts.find(x => x.old.some(o => nrm(o) === nrm(base)));
+        if (!part) { miss.push(file.name); continue; }
+        try {
+          const r = await compress(file);
+          const name = fileName(part.ref, r.ext);
+          await putPending(name, r.blob); part.img = name + '?v=' + Date.now().toString(36);
+          ok.push(part.ref); total += r.blob.size; orig += file.size;
+        } catch (x) { bad.push(file.name + ' (' + x.message + ')'); }
+      }
+      changed(`${ok.length} fotos asignadas`);
+      alert([`${ok.length} fotos asignadas${ok.length ? ` (${fmtKB(orig)} → ${fmtKB(total)})` : ''}.`,
+        miss.length ? `Sin referencia en el catálogo: ${miss.slice(0, 12).join(', ')}${miss.length > 12 ? '…' : ''}` : '',
+        bad.length ? `No se pudieron leer: ${bad.slice(0, 6).join(', ')}` : ''].filter(Boolean).join('\n\n'));
     }
   });
 }

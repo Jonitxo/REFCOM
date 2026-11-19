@@ -6,7 +6,8 @@ import { loadPublished, pollData, login, savedToken, savedRepo, clearToken } fro
 import * as V from './views.js';
 import * as X from './xls.js';
 import * as TN from './toner.js';
-import { sheetToCatalogForm, openDialog, setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
+import { loadPending } from './img.js';
+import { cleanForm, cleanBulkForm, bulkPhotosForm, sheetToCatalogForm, openDialog, setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
 import { importStock, exportStock, stockClear, stockGet, stockToggleDel, stockQty, stockReset, stockAdd, stockFinal, SF } from './stock.js';
 import { invAdd, invQty, invRemove, invUso, invMove, invClear, invCount, invExport, invImport, invGet } from './inv.js';
 
@@ -31,7 +32,7 @@ function parse(hash) {
   const [, a = '', ...rest] = h.split('/');
   let id = rest.join('/');
   try { id = decodeURIComponent(id); } catch { /* enlace mal formado (p. ej. «100%»): se usa tal cual */ }
-  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls', ayuda: 'help', toner: 'toner' };
+  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls', ayuda: 'help', toner: 'toner', limpieza: 'clean' };
   return { v: map[a] || 'home', id };
 }
 
@@ -59,6 +60,7 @@ function render() {
     case 'q': html = V.searchView(route.id); title = 'Buscar'; if ($('#q').value !== route.id && document.activeElement !== $('#q')) $('#q').value = route.id; break;
     case 'ov': html = V.overviewView(cat); title = 'Vista general'; break;
     case 'tec': html = V.techListView(route.id); title = 'Técnico'; break;
+    case 'clean': html = V.cleanView(); title = 'Productos de limpieza'; break;
     case 'help': html = V.helpView(); title = 'Cómo se usa'; break;
     case 'toner': html = TN.tonerView(route.id); title = 'Stock de tóner'; break;
     case 'xls': html = X.xlsView(); title = X.XS.file ? X.XS.file.name : 'Abrir Excel'; break;
@@ -89,7 +91,7 @@ function renderChrome() {
   $('#dirty').textContent = st.saveErr ? 'Sin publicar · borrador NO guardado' : 'Sin publicar';
   $('#btnAcc').textContent = st.editing ? 'Editar' : 'Acceso';
   $('#btnAcc').classList.toggle('pri', st.editing);
-  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec', xls: 'xls', toner: 'toner' }[route.v] || '';
+  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec', xls: 'xls', toner: 'toner', clean: 'home' }[route.v] || '';
   $$('#nav [data-nav]').forEach(a => { const on = a.dataset.nav === act; a.classList.toggle('on', on); on ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
   const n = invCount('pedir');
   $('#invN').textContent = n || ''; $('#invN').hidden = !n;
@@ -178,6 +180,9 @@ function act(a, id) {
   else if (a === 'editPart') partForm(P(id));
   else if (a === 'newModel') modelForm(null, id);
   else if (a === 'newPart') partForm(null, [{ k: id[0], id: id.slice(2) }]);
+  else if (a === 'newClean') cleanForm(null);
+  else if (a === 'bulkClean') cleanBulkForm();
+  else if (a === 'bulkPhotos') bulkPhotosForm();
   else if (a === 'newTech') id.startsWith('k:') ? techForm(null, [], id.slice(2)) : techForm(null, [{ k: id[0], id: id.slice(2) }]);
   else if (a === 'editTech') techForm(TECH(id));
   else if (a === 'techTable') techTableForm();
@@ -198,7 +203,7 @@ document.addEventListener('change', e => {
 document.addEventListener('input', e => {
   if (!e.target.classList.contains('tf')) return;
   const v = nrm(e.target.value);
-  $$('.list .row[data-s], .inv .ii[data-s], .xc[data-s], .xtbl tr[data-s]', $('#main')).forEach(r => { r.hidden = !!v && !r.dataset.s.includes(v); });
+  $$('.list .row[data-s], .inv .ii[data-s], .xc[data-s], .xtbl tr[data-s], .cc[data-s]', $('#main')).forEach(r => { r.hidden = !!v && !r.dataset.s.includes(v); });
   $$('.xgrp', $('#main')).forEach(g => { g.hidden = !g.querySelector('.xc:not([hidden])'); });
   if (e.target.classList.contains('sk-q')) SF.q = e.target.value;
   if (e.target.classList.contains('tq')) { TN.TS.q = e.target.value; TN.applyFilter(); }
@@ -407,6 +412,7 @@ setOnChange(renderChrome);
 (async function boot() {
   online();
   await loadPublished();
+  await loadPending();
   const tok = savedToken(), repo = savedRepo();
   if (tok && repo) {
     try { if (await login(repo, tok, null, true) === 'stale') setTimeout(() => toast('Tu borrador se hizo sobre una versión anterior: al publicar se avisará del conflicto.'), 800); }

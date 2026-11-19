@@ -1,9 +1,9 @@
 // Service worker: la red primero (siempre la versión más reciente) y la caché como respaldo sin conexión.
-const V = 'refcom-v8';
-const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/util.js', 'js/store.js', 'js/github.js', 'js/views.js', 'js/forms.js', 'js/inv.js', 'js/stock.js', 'js/xls.js', 'js/toner.js', 'js/vendor/jszip.min.js',
+const V = 'refcom-v9';
+const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/util.js', 'js/store.js', 'js/github.js', 'js/views.js', 'js/forms.js', 'js/inv.js', 'js/stock.js', 'js/xls.js', 'js/toner.js', 'js/img.js', 'js/vendor/jszip.min.js',
   'data.json', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
-self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V && x !== 'refcom-share').map(x => caches.delete(x)))).then(() => self.clients.claim())); });
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V && x !== 'refcom-img' && x !== 'refcom-share').map(x => caches.delete(x)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
   const r = e.request, u = new URL(r.url);
   // Archivo compartido desde otra app (Android, app instalada): se guarda y se abre en el visor de Excel
@@ -21,6 +21,14 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (r.method !== 'GET' || u.origin !== location.origin) return;
+  // Fotos (img/): nombre con versión (?v=), así que se sirven desde la caché si ya se han visto
+  if (u.pathname.includes('/img/')) {
+    e.respondWith(caches.open('refcom-img').then(async c => {
+      const hit = await c.match(r); if (hit) return hit;
+      const res = await fetch(r); if (res.ok) c.put(r, res.clone()); return res;
+    }));
+    return;
+  }
   const key = r.mode === 'navigate' ? 'index.html' : u.pathname.endsWith('/data.json') ? 'data.json' : r;
   // La red primero, pero sin esperar más de 3,5 s si ya hay copia: con cobertura mala se usa la copia
   // y la red sigue actualizando la caché en segundo plano.
