@@ -3,8 +3,8 @@
 // mismo formato. Se edita el XML del propio archivo para conservar estilos, anchos y columnas.
 // Todo queda en este dispositivo (localStorage); nada se publica.
 
-import { esc, fmtRef, cleanRef, nrm, lsGet, lsSet, lsDel, cmp } from './util.js';
-import { partByRef, supersededBy, mo, M } from './store.js';
+import { esc, fmtRef, cleanRef, nrm, lsGet, lsSet, lsDel, cmp, colNum, colName, siText, walkCells } from './util.js';
+import { st, partByRef, supersededBy, mo, M } from './store.js';
 
 const KEY = 'refcom_stock_v1';
 export const COLORS = { del: 'FFC00000', mod: 'FFFFC000', add: 'FF00B050' };
@@ -28,8 +28,6 @@ const parseXml = t => new DOMParser().parseFromString(t, 'application/xml');
 const ser = d => new XMLSerializer().serializeToString(d);
 const kids = (el, name) => [...el.childNodes].filter(n => n.nodeType === 1 && n.localName === name);
 const kid = (el, name) => kids(el, name)[0];
-const colOf = ref => ref.replace(/\d+/g, '');
-const colNum = c => [...c].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
 const b64of = buf => { const b = new Uint8Array(buf); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
 const bufOf = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 
@@ -40,6 +38,22 @@ function classify(rgb) {
   if (r > 150 && g < 110 && b < 110) return 'del';
   if (r > 180 && g > 140 && b < 120) return 'mod';
   if (g > 120 && r < 170 && b < 140) return 'add';
+  return '';
+}
+
+// Paleta por defecto de colores «indexed» (índices 8-63; 0-7 repiten 8-15)
+const IDX = '000000 FFFFFF FF0000 00FF00 0000FF FFFF00 FF00FF 00FFFF 800000 008000 000080 808000 800080 008080 C0C0C0 808080 9999FF 993366 FFFFCC CCFFFF 660066 FF8080 0066CC CCCCFF 000080 FF00FF FFFF00 00FFFF 800080 800000 008080 0000FF 00CCFF CCFFFF CCFFCC FFFF99 99CCFF FF99CC CC99FF FFCC99 3366FF 33CCCC 99CC00 FFCC00 FF9900 FF6600 666699 969696 003366 339966 003300 333300 993300 993366 333399 333333'.split(' ');
+function tintHex(hex, tint) {
+  if (!tint) return hex;
+  return hex.match(/../g).map(h => { let c = parseInt(h, 16); c = tint < 0 ? c * (1 + tint) : c + (255 - c) * tint; return Math.round(Math.max(0, Math.min(255, c))).toString(16).padStart(2, '0'); }).join('').toUpperCase();
+}
+/** Color de un <fgColor>: rgb directo, de tema (con tinte) o indexado. */
+function colorOf(el, theme) {
+  if (!el) return '';
+  const rgb = el.getAttribute('rgb'); if (rgb) return rgb.slice(-6).toUpperCase();
+  const tint = +(el.getAttribute('tint') || 0);
+  if (el.hasAttribute('theme')) { const h = theme[+el.getAttribute('theme')]; return h ? tintHex(h, tint) : ''; }
+  if (el.hasAttribute('indexed')) { const i = +el.getAttribute('indexed'); const h = IDX[i < 8 ? i : i - 8]; return i === 64 || !h ? '' : tintHex(h, tint); }
   return '';
 }
 
@@ -54,10 +68,23 @@ async function openParts(buf) {
   let target = rel.getAttribute('Target').replace(/^\//, '');
   const sheetPath = target.startsWith('xl/') ? target : 'xl/' + target;
   const ssFile = zip.file('xl/sharedStrings.xml');
-  const ss = ssFile ? [...parseXml(await ssFile.async('string')).getElementsByTagNameNS(NS, 'si')].map(si => [...si.getElementsByTagNameNS(NS, 't')].map(t => t.textContent).join('')) : [];
+  const ss = ssFile ? [...parseXml(await ssFile.async('string')).getElementsByTagNameNS(NS, 'si')].map(siText) : [];
   const styles = parseXml(await zip.file('xl/styles.xml').async('string'));
   const sheetDoc = parseXml(await zip.file(sheetPath).async('string'));
-  return { zip, sheetPath, ss, styles, sheetDoc };
+  // colores del tema: orden de índices de Excel (lt1, dk1, lt2, dk2, accent1-6, hlink, folHlink)
+  // tema por defecto de Office (si el archivo no trae el suyo)
+  let theme = ['FFFFFF', '000000', 'E7E6E6', '44546A', '4472C4', 'ED7D31', 'A5A5A5', 'FFC000', '5B9BD5', '70AD47', '0563C1', '954F72'];
+  const th = zip.file('xl/theme/theme1.xml');
+  if (th) {
+    const doc = parseXml(await th.async('string')), cs = doc.getElementsByTagNameNS('*', 'clrScheme')[0];
+    const val = n => { const e = cs && [...cs.childNodes].find(x => x.localName === n); const c = e && [...e.childNodes].find(x => x.nodeType === 1); return c ? (c.getAttribute('val') && c.localName === 'srgbClr' ? c.getAttribute('val') : c.getAttribute('lastClr') || '') : ''; };
+    const t2 = ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'].map(val).map(x => x.toUpperCase());
+    theme = t2.map((x, i) => x || theme[i]);
+  }
+  // numeración de filas aunque falten atributos r
+  const rowEls = [...sheetDoc.getElementsByTagNameNS(NS, 'row')], rowNum = new Map(), cellCol = new Map();
+  walkCells(rowEls, kids, (row, r, c, L) => { rowNum.set(row, r); if (c) cellCol.set(c, L); });
+  return { zip, sheetPath, ss, styles, sheetDoc, theme, rowEls, rowNum, cellCol };
 }
 
 function cellText(c, ss) {
@@ -66,12 +93,13 @@ function cellText(c, ss) {
   if (t === 'inlineStr') return [...c.getElementsByTagNameNS(NS, 't')].map(x => x.textContent).join('');
   return v ? v.textContent : '';
 }
-function fillOfStyle(styles, s) {
+function fillOfStyle(styles, s, theme) {
   const xfs = kids(kid(styles.documentElement, 'cellXfs'), 'xf'), xf = xfs[+s || 0];
   const fid = +(xf?.getAttribute('fillId') || 0);
   const fill = kids(kid(styles.documentElement, 'fills'), 'fill')[fid];
-  const fg = fill && fill.getElementsByTagNameNS(NS, 'fgColor')[0];
-  return fg ? fg.getAttribute('rgb') || '' : '';
+  const p = fill && fill.getElementsByTagNameNS(NS, 'patternFill')[0];
+  if (!p || (p.getAttribute('patternType') || 'none') === 'none') return '';
+  return colorOf(p.getElementsByTagNameNS(NS, 'fgColor')[0], theme);
 }
 
 /** «DESCRIPCIÓN (REFERENCIA)» → {desc, ref} */
@@ -83,8 +111,8 @@ export function splitModel(t) {
 function parseNote(note, qty) {
   const n = String(note || '');
   let m = n.match(/(?:solo|dejar|deja|queda[n]?|quedan|→)\s*(\d+)/i); if (m) return +m[1];
-  m = n.match(/(?:quitar|quita|menos|-)\s*(\d+)/i); if (m) return Math.max(0, qty - +m[1]);
-  m = n.match(/(?:subir|añadir|sumar|\+)\s*(\d+)/i); if (m) return qty + +m[1];
+  m = n.match(/(?:quitar|quita|menos|(?:^|\s)-)\s*(\d+)/i); if (m) return Math.max(0, qty - +m[1]);
+  m = n.match(/(?:subir|añadir|sumar|(?:^|\s)\+)\s*(\d+)/i); if (m) return qty + +m[1];
   m = n.match(/^\s*(\d+)\s*$/); if (m) return +m[1];
   return null;
 }
@@ -93,35 +121,38 @@ function parseNote(note, qty) {
 
 export async function importStock(file) {
   const buf = await file.arrayBuffer();
-  const { ss, styles, sheetDoc, sheetPath } = await openParts(buf);
-  const rows = [...sheetDoc.getElementsByTagNameNS(NS, 'row')];
+  const { ss, styles, sheetPath, theme, rowEls: rows, rowNum, cellCol } = await openParts(buf);
   const hdr = {};
-  kids(rows[0], 'c').forEach(c => { hdr[nrm(cellText(c, ss))] = colOf(c.getAttribute('r')); });
+  kids(rows[0], 'c').forEach(c => { const k = nrm(cellText(c, ss)); if (k && !hdr[k]) hdr[k] = cellCol.get(c); });
   const cModel = hdr.model, cQty = hdr.threshold, cStock = hdr.stockroom;
   if (!cModel || !cQty) throw new Error('No parece un stock rule: faltan las columnas «Model» y «Threshold».');
-  let noteCol = 'L';
-  const last = Object.values(hdr).sort((a, b) => colNum(b) - colNum(a))[0];
-  if (colNum(last) >= colNum('L')) noteCol = String.fromCharCode(last.charCodeAt(0) + 1);
+  // columna de notas: L, o la primera libre tras la última cabecera
+  const last = Math.max(...Object.values(hdr).map(colNum));
+  const noteCol = colName(Math.max(last + 1, colNum('L')));
   const out = []; let stockroom = '';
   rows.slice(1).forEach(row => {
-    const cells = Object.fromEntries(kids(row, 'c').map(c => [colOf(c.getAttribute('r')), c]));
+    const cells = Object.fromEntries(kids(row, 'c').map(c => [cellCol.get(c), c]));
     const mc = cells[cModel]; if (!mc) return;
     const { desc, ref } = splitModel(cellText(mc, ss));
     if (!ref && !desc) return;
     const qty = parseInt(cellText(cells[cQty] || mc, ss), 10) || 0;
     if (!stockroom && cells[cStock]) stockroom = cellText(cells[cStock], ss);
-    const st0 = classify(fillOfStyle(styles, mc.getAttribute('s')));
+    const st0 = classify(fillOfStyle(styles, mc.getAttribute('s'), theme));
     const note = cells[noteCol] ? cellText(cells[noteCol], ss) : '';
     const nq = st0 === 'mod' ? parseNote(note, qty) : null;
-    out.push({ r: +row.getAttribute('r'), ref, desc, qty, state: st0 === 'add' ? 'add0' : st0 || 'keep', newQty: nq ?? qty, nq0: nq ?? qty, note0: note });
+    const state = st0 === 'add' ? 'add0' : st0 || 'keep';
+    out.push({ r: rowNum.get(row), ref, desc, qty, state, orig: state, newQty: nq ?? qty, nq0: nq ?? qty, note0: note });
   });
   const data = { name: file.name, b64: b64of(buf), sheetPath, noteCol, cols: hdr, stockroom, rows: out, added: [], at: new Date().toISOString() };
-  lsSet(KEY, data);
+  if (!lsSet(KEY, data)) throw new Error('No hay espacio en el navegador para guardar el archivo. Borra los Excel recientes del visor y vuelve a intentarlo.');
   return data;
 }
 
 export const stockGet = () => lsGet(KEY, null);
-const put = d => lsSet(KEY, d);
+const put = d => { if (!lsSet(KEY, d)) alert('No se pudo guardar el cambio: el almacenamiento del navegador está lleno.'); };
+const origOf = it => it.orig || (it.state === 'add0' ? 'add0' : 'keep');
+/** Estado cuando no se elimina: cantidad cambiada → amarillo; si no, el estado con el que se importó. */
+const restState = it => (it.newQty !== it.qty ? 'mod' : origOf(it) === 'del' ? 'keep' : origOf(it));
 export const stockClear = () => lsDel(KEY);
 
 /* ---------- edición ---------- */
@@ -130,7 +161,7 @@ function find(d, key) { return key.startsWith('a:') ? d.added[+key.slice(2)] : d
 export function stockToggleDel(key) {
   const d = stockGet(), it = find(d, key); if (!it) return;
   if (key.startsWith('a:')) { d.added.splice(+key.slice(2), 1); }
-  else it.state = it.state === 'del' ? (it.newQty !== it.qty ? 'mod' : 'keep') : 'del';
+  else it.state = it.state === 'del' ? restState(it) : 'del';
   put(d);
 }
 export function stockQty(key, delta) {
@@ -139,18 +170,21 @@ export function stockQty(key, delta) {
   if (it.state === 'add0') { it.newQty = Math.max(1, it.newQty + delta); put(d); return; }
   it.newQty = Math.max(0, it.newQty + delta);
   if (it.newQty === 0) { it.state = 'del'; it.newQty = it.qty; }
-  else it.state = it.newQty === it.qty ? (it.state === 'add0' ? 'add0' : 'keep') : 'mod';
+  else it.state = it.newQty === it.qty ? (origOf(it) === 'mod' || origOf(it) === 'del' ? 'keep' : origOf(it)) : 'mod';
   put(d);
 }
 export function stockReset(key) {
   const d = stockGet(), it = find(d, key); if (!it || key.startsWith('a:')) return;
-  it.state = 'keep'; it.newQty = it.qty; put(d);
+  // 1.ª vez: vuelve a como se importó; si ya estaba así, quita también la marca original
+  if (it.state === origOf(it) && it.newQty === (it.nq0 ?? it.qty)) { it.state = 'keep'; it.newQty = it.qty; }
+  else { it.newQty = it.nq0 ?? it.qty; it.state = origOf(it) === 'del' ? 'keep' : origOf(it); }
+  put(d);
 }
 export function stockAdd(ref, qty, desc) {
   ref = cleanRef(ref); if (!ref) return 'empty';
   const d = stockGet();
   const ex = d.rows.find(x => nrm(x.ref) === nrm(ref));
-  if (ex) { if (ex.state === 'del') ex.state = ex.newQty !== ex.qty ? 'mod' : 'keep'; put(d); return 'exists'; }
+  if (ex) { if (ex.state === 'del') ex.state = restState(ex); put(d); return 'exists'; }
   const ad = d.added.find(x => nrm(x.ref) === nrm(ref));
   if (ad) { ad.qty += qty; put(d); return 'more'; }
   d.added.push({ ref, qty: Math.max(1, qty), desc: (desc || '').toUpperCase() });
@@ -173,7 +207,8 @@ const noteFor = it => { const dlt = it.newQty - it.qty; return dlt < 0 ? `Quitar
 
 export async function exportStock() {
   const d = stockGet(); if (!d) throw new Error('No hay stock rule cargado');
-  const { zip, ss, styles, sheetDoc, sheetPath } = await openParts(bufOf(d.b64));
+  const { zip, ss, styles, sheetDoc, sheetPath, rowNum, cellCol } = await openParts(bufOf(d.b64));
+  const colOf = c => cellCol.get(c) || '';
   const root = styles.documentElement;
   const fillsEl = kid(root, 'fills'), xfsEl = kid(root, 'cellXfs');
   const fillId = rgb => {
@@ -203,11 +238,17 @@ export async function exportStock() {
   };
   const sheetData = sheetDoc.getElementsByTagNameNS(NS, 'sheetData')[0];
   const rowEls = kids(sheetData, 'row');
-  const byR = new Map(rowEls.map(r => [+r.getAttribute('r'), r]));
+  // las filas y celdas sin atributo r reciben el suyo para poder añadir celdas sin ambigüedad
+  rowEls.forEach(r => { if (!r.getAttribute('r')) r.setAttribute('r', rowNum.get(r)); kids(r, 'c').forEach(c => { if (!c.getAttribute('r')) c.setAttribute('r', cellCol.get(c) + rowNum.get(r)); }); });
+  const byR = new Map(rowEls.map(r => [rowNum.get(r), r]));
   const setNote = (row, rnum, text, s) => {
-    let c = kids(row, 'c').find(x => colOf(x.getAttribute('r')) === d.noteCol);
+    let c = kids(row, 'c').find(x => colOf(x) === d.noteCol);
     if (!text) { if (c) row.removeChild(c); return; }
-    if (!c) { c = sheetDoc.createElementNS(NS, 'c'); c.setAttribute('r', d.noteCol + rnum); row.appendChild(c); }
+    if (!c) { // insertar en su posición para mantener el orden de columnas
+      c = sheetDoc.createElementNS(NS, 'c'); c.setAttribute('r', d.noteCol + rnum); cellCol.set(c, d.noteCol);
+      const after = kids(row, 'c').find(x => colNum(colOf(x)) > colNum(d.noteCol));
+      after ? row.insertBefore(c, after) : row.appendChild(c);
+    }
     while (c.firstChild) c.removeChild(c.firstChild);
     c.setAttribute('t', 'inlineStr'); if (s != null) c.setAttribute('s', s);
     const is = sheetDoc.createElementNS(NS, 'is'), t = sheetDoc.createElementNS(NS, 't');
@@ -219,26 +260,30 @@ export async function exportStock() {
     const rgb = it.state === 'del' ? COLORS.del : it.state === 'mod' ? COLORS.mod : it.state === 'add0' ? COLORS.add : null;
     let textStyle = null;
     kids(row, 'c').forEach(c => {
-      if (colOf(c.getAttribute('r')) === d.noteCol) return;
+      if (colOf(c) === d.noteCol) return;
       const s = styled(c.getAttribute('s'), rgb); c.setAttribute('s', s);
-      if (colOf(c.getAttribute('r')) === d.cols.model) textStyle = s;
+      if (colOf(c) === d.cols.model) textStyle = s;
     });
     if (it.state === 'add0' && it.newQty !== it.qty) { // alta pendiente con cantidad cambiada: se corrige el valor
-      const qc = kids(row, 'c').find(c => colOf(c.getAttribute('r')) === d.cols.threshold);
-      const v = qc && kid(qc, 'v'); if (v) v.textContent = String(it.newQty);
+      const qc = kids(row, 'c').find(c => colOf(c) === d.cols.threshold);
+      if (qc) { qc.removeAttribute('t'); while (qc.firstChild) qc.removeChild(qc.firstChild); const v = sheetDoc.createElementNS(NS, 'v'); v.textContent = String(it.newQty); qc.appendChild(v); }
     }
     setNote(row, it.r, it.state === 'mod' ? (it.note0 && it.newQty === it.nq0 ? it.note0 : noteFor(it)) : it.state === 'del' || it.state === 'add0' ? it.note0 : '', textStyle);
   });
   // 2) filas añadidas (verde), copiando la última fila de datos como plantilla
   if (d.added.length) {
-    const tpl = rowEls[rowEls.length - 1];
-    let rnum = Math.max(...rowEls.map(r => +r.getAttribute('r')));
-    const tplCells = kids(tpl, 'c').filter(c => colOf(c.getAttribute('r')) !== d.noteCol);
+    // plantilla: la última fila con referencia (al final puede haber filas vacías con formato)
+    const tpl = [...rowEls].reverse().find(r => kids(r, 'c').some(c => colOf(c) === d.cols.model && cellText(c, ss))) || rowEls[rowEls.length - 1];
+    let rnum = Math.max(...rowEls.map(r => rowNum.get(r)));
+    const tplMap = new Map(kids(tpl, 'c').filter(c => colOf(c) !== d.noteCol).map(c => [colOf(c), c]));
+    const mustCols = [d.cols.model, d.cols.threshold].filter(Boolean);
+    const allCols = [...new Set([...tplMap.keys(), ...mustCols])].sort((a, b) => colNum(a) - colNum(b));
+    const tplCells = allCols.map(L => tplMap.get(L) || Object.assign(sheetDoc.createElementNS(NS, 'c'), { _L: L }));
     d.added.forEach(a => {
       rnum++;
       const row = tpl.cloneNode(false); row.setAttribute('r', rnum);
       tplCells.forEach(tc => {
-        const col = colOf(tc.getAttribute('r')), c = sheetDoc.createElementNS(NS, 'c');
+        const col = tc._L || colOf(tc), c = sheetDoc.createElementNS(NS, 'c');
         c.setAttribute('r', col + rnum); c.setAttribute('s', styled(tc.getAttribute('s'), COLORS.add));
         const key = Object.entries(d.cols).find(([, v]) => v === col)?.[0] || '';
         let val = null, type = 'str';
@@ -255,7 +300,10 @@ export async function exportStock() {
         }
         row.appendChild(c);
       });
-      sheetData.appendChild(row);
+      // tras la última fila existente (las filas vacías del final se quedan detrás)
+      const next = kids(sheetData, 'row').find(r => (rowNum.get(r) ?? +r.getAttribute('r')) > rnum);
+      next ? sheetData.insertBefore(row, next) : sheetData.appendChild(row);
+      rowNum.set(row, rnum);
     });
     const dim = sheetDoc.getElementsByTagNameNS(NS, 'dimension')[0];
     if (dim) dim.setAttribute('ref', dim.getAttribute('ref').replace(/\d+$/, rnum));
@@ -272,26 +320,27 @@ export async function exportStock() {
 export const SF = { f: 'all', q: '' };
 export function stockView() {
   const d = stockGet();
-  const intro = `<p class="mut small">Importa tu archivo de stock rule (.xlsx). Marca lo que quieras quitar, cambia cantidades o añade referencias, y genera un Excel con el mismo formato y los colores habituales (rojo eliminar, amarillo cambiar cantidad con la nota, verde añadir) para enviarlo al jefe de equipo. El archivo solo se guarda en este dispositivo.</p>`;
+  const intro = `<p class="mut small">Importa tu archivo de stock rule (.xlsx). Marca lo que quieras quitar, cambia el umbral (cantidad que se repone) o añade referencias, y genera un Excel con el mismo formato y los colores habituales (rojo eliminar, amarillo cambiar cantidad con la nota, verde añadir) para enviarlo al jefe de equipo. El archivo solo se guarda en este dispositivo.</p>`;
   if (!d) return `${intro}<div class="empty"><p>No hay ningún stock rule cargado.</p><p><button type="button" class="btn pri" data-sk="import">Importar stock rule (.xlsx)</button></p></div>`;
   const c = stockCounts(d);
   const segs = [['all', 'Todas', d.rows.length + d.added.length], ['chg', 'Cambios', c.del + c.mod + c.add], ['del', 'Eliminar', c.del], ['mod', 'Cantidad', c.mod], ['add', 'Añadir', c.add]];
   let h = `<div class="sk-h"><div><b>${esc(d.name)}</b><div class="mut small">${esc(d.stockroom)} · importado ${new Date(d.at).toLocaleDateString('es-ES')}</div></div>
     <div class="sk-c"><span class="sk-b del">${c.del}</span><span class="sk-b mod">${c.mod}</span><span class="sk-b add">${c.add}</span></div></div>
-  <div class="acts"><button type="button" class="btn pri" data-sk="export" ${c.del + c.mod + c.add ? '' : 'disabled'}>Generar Excel</button><button type="button" class="sm ghost" data-sk="toinv">Añadir todo a «Tengo»</button><button type="button" class="sm ghost" data-sk="import">Importar otro</button><button type="button" class="sm ghost bad" data-sk="clear">Quitar archivo</button></div>
+  <div class="acts"><button type="button" class="btn pri" data-sk="export" ${c.del + c.mod + c.add ? '' : 'disabled'}>Generar Excel</button><button type="button" class="sm ghost" data-sk="toinv">Añadir todo a «Tengo»</button><button type="button" class="sm ghost" data-sk="import">Importar otro</button>${st.editing ? '<button type="button" class="sm ghost" data-sk="tocat">Añadir al catálogo</button>' : ''}<button type="button" class="sm ghost bad" data-sk="clear">Quitar archivo</button></div>
   <form class="invadd wrapf" data-form="skadd" autocomplete="off"><input name="ref" list="dlRefs" placeholder="Añadir referencia" aria-label="Referencia a añadir" required autocapitalize="characters"><input name="qty" type="number" min="1" value="1" inputmode="numeric" aria-label="Cantidad"><button class="pri">Añadir</button><input name="desc" placeholder="Descripción (opcional)" aria-label="Descripción" class="full"></form>
   <div class="seg scroll" role="group" aria-label="Filtro">${segs.map(([k, l, n]) => `<button type="button" class="${SF.f === k ? 'on' : ''}" data-skf="${k}">${l} <small>${n}</small></button>`).join('')}</div>
   <input type="search" class="tf sk-q" placeholder="Filtrar por referencia o descripción" aria-label="Filtrar" value="${esc(SF.q)}">`;
   const items = [...d.added.map((a, i) => ({ key: 'a:' + i, ref: a.ref, desc: a.desc, qty: a.qty, newQty: a.qty, state: 'add', isNew: true })),
     ...d.rows.map(x => ({ key: String(x.r), ...x }))];
-  const vis = items.filter(it => SF.f === 'all' || (SF.f === 'chg' ? it.state !== 'keep' : SF.f === 'add' ? it.state === 'add' || it.state === 'add0' : it.state === SF.f));
+  const q = nrm(SF.q);
+  const vis = items.filter(it => (!q || nrm(it.ref + ' ' + it.desc).includes(q)) && (SF.f === 'all' || (SF.f === 'chg' ? it.state !== 'keep' : SF.f === 'add' ? it.state === 'add' || it.state === 'add0' : it.state === SF.f)));
   h += `<div class="inv sk">${vis.map(it => {
     const p = partByRef(it.ref), nw = supersededBy(it.ref), m1 = p ? [...mo(p)].map(M).filter(Boolean)[0] : null;
     const stl = { keep: '', del: 'Eliminar', mod: `${it.qty} → ${it.newQty}`, add: 'Nueva', add0: 'Añadida' }[it.state];
     return `<div class="ii st-${it.state}" data-s="${esc(nrm(it.ref + ' ' + it.desc + ' ' + (p?.name || '')))}"><div class="ii-i">${it.state !== 'keep' ? `<span class="sk-t">${esc(stl)}</span>` : ''}<button type="button" class="ref" data-copy="${esc(it.ref)}" aria-label="Copiar ${esc(it.ref)}">${fmtRef(it.ref)}</button>
       <div class="small">${esc(it.desc || p?.name || '')}</div><div class="mut small">${p ? esc(p.type) + (m1 ? ' · ' + esc(m1.name) : '') : ''}${nw ? ` <a class="bd w" href="#/r/${encodeURIComponent(nw.ref)}">sustituida por ${esc(nw.ref)}</a>` : ''}</div></div>
-      <div class="ii-a"><div class="step"><button type="button" data-skq="-1" data-k="${it.key}" aria-label="Restar" ${it.state === 'del' ? 'disabled' : ''}>−</button><span>${it.newQty}</span><button type="button" data-skq="1" data-k="${it.key}" aria-label="Sumar" ${it.state === 'del' ? 'disabled' : ''}>+</button></div>
-      ${it.state === 'mod' ? `<button type="button" class="sm ghost" data-skr="${it.key}">Deshacer</button>` : ''}
+      <div class="ii-a"><span class="mut small">Umbral</span><div class="step"><button type="button" data-skq="-1" data-k="${it.key}" aria-label="Restar" ${it.state === 'del' ? 'disabled' : ''}>−</button><span>${it.newQty}</span><button type="button" data-skq="1" data-k="${it.key}" aria-label="Sumar" ${it.state === 'del' ? 'disabled' : ''}>+</button></div>
+      ${it.state === 'mod' ? `<button type="button" class="sm ghost" data-skr="${it.key}">${(it.orig || 'keep') === 'mod' && it.newQty === it.nq0 ? 'Quitar marca' : 'Deshacer'}</button>` : ''}
       <button type="button" class="sm ${it.state === 'del' ? 'on' : 'ghost bad'}" data-skd="${it.key}">${it.isNew ? 'Quitar' : it.state === 'del' ? 'Mantener' : 'Eliminar'}</button></div></div>`;
   }).join('') || '<div class="empty"><p>Nada en este filtro.</p></div>'}</div>`;
   return intro + h;

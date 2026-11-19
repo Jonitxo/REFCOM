@@ -100,7 +100,9 @@ function sanitize(d) {
   d.tech = (Array.isArray(d.tech) ? d.tech : []).filter(x => x && x.id && (s(x.title) || s(x.code))).map(x => ({
     id: String(x.id), kind: x.kind === 'sc' ? 'sc' : 'guia', code: s(x.code).toUpperCase(), title: s(x.title),
     causes: String(x.causes ?? '').trim(), steps: String(x.steps ?? '').trim(), note: String(x.note ?? '').trim(),
-    refs: (Array.isArray(x.refs) ? x.refs : []).map(cleanRef).filter(Boolean), t: okT(x.t)
+    refs: (Array.isArray(x.refs) ? x.refs : []).map(cleanRef).filter(Boolean),
+    // si todos sus equipos han desaparecido no se convierte en «todos los equipos»: queda sin equipo (aviso en Revisión)
+    t: okT(x.t).length || !(Array.isArray(x.t) && x.t.length) ? okT(x.t) : x.t.filter(y => y && (y.k === 'm' || y.k === 's') && y.id).map(y => ({ k: y.k, id: String(y.id) }))
   }));
   d.config = { contacto: s(d.config?.contacto) };
   // vistas de Excel publicadas para el equipo (solo estructura de columnas)
@@ -217,10 +219,11 @@ export const setOnChange = fn => { onChange = fn; };
 
 export function persist() {
   st.dirty = st.snap !== st.pubStr;
+  st.saveErr = false;
   try {
     if (st.dirty) localStorage.setItem(K.draft, `{"repo":${JSON.stringify(st.repo)},"base":${JSON.stringify(st.baseSha)},"data":${st.snap}}`);
     else localStorage.removeItem(K.draft);
-  } catch { /* cuota */ }
+  } catch { st.saveErr = st.dirty; /* sin espacio: el borrador solo vive en memoria */ }
   onChange();
 }
 export function resetUndo() { st.snap = JSON.stringify(st.D); st.undo = []; }

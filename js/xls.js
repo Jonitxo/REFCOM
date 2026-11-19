@@ -2,7 +2,7 @@
 // El archivo se procesa en el dispositivo y no se sube a ningún sitio.
 // Plantillas: describen cómo mostrar un tipo de archivo (por sus cabeceras), nunca sus datos.
 
-import { $, $$, esc, nrm, cmp, lsGet, lsSet, lsDel, parseTable } from './util.js';
+import { $, $$, esc, nrm, cmp, lsGet, lsSet, lsDel, parseTable, colNum, siText, walkCells, cellRef, decodeText } from './util.js';
 import { st, save, partByRef, modelByName } from './store.js';
 import { loadZip } from './stock.js';
 
@@ -18,7 +18,6 @@ const kids = (el, name) => (el ? [...el.childNodes].filter(n => n.nodeType === 1
 const kid = (el, name) => kids(el, name)[0];
 const colOf = ref => ref.replace(/\d+/g, '');
 const rowOf = ref => +ref.replace(/\D+/g, '');
-const colNum = c => [...c].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
 const b64of = buf => { const b = new Uint8Array(buf); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
 const bufOf = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 const clean = s => String(s ?? '').replace(/\s+/g, ' ').trim();
@@ -29,6 +28,7 @@ function isDateFmt(code) {
   return /[dmyhs]/i.test(c) && !/^[#0.,%\s]*$/.test(c);
 }
 function fmtDate(serial, d1904, withTime) {
+  if (serial < 1 && withTime) { const m = Math.round(serial * 1440); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; } // solo hora
   const ms = (serial - (d1904 ? 24107 : 25569)) * 86400000;
   const d = new Date(Math.round(ms));
   if (isNaN(d)) return String(serial);
@@ -48,7 +48,7 @@ async function readXlsx(buf) {
   const rels = await read('xl/_rels/workbook.xml.rels');
   const relMap = new Map([...rels.getElementsByTagName('Relationship')].map(r => [r.getAttribute('Id'), r.getAttribute('Target')]));
   const ssDoc = await read('xl/sharedStrings.xml');
-  const ss = ssDoc ? [...ssDoc.getElementsByTagNameNS(NS, 'si')].map(si => [...si.getElementsByTagNameNS(NS, 't')].map(t => t.textContent).join('')) : [];
+  const ss = ssDoc ? [...ssDoc.getElementsByTagNameNS(NS, 'si')].map(siText) : [];
   // estilos: formato numérico y relleno de cada estilo de celda
   const sty = await read('xl/styles.xml');
   const fmts = new Map(); kids(kid(sty?.documentElement, 'numFmts'), 'numFmt').forEach(n => fmts.set(+n.getAttribute('numFmtId'), n.getAttribute('formatCode')));
@@ -72,13 +72,14 @@ async function readXlsx(buf) {
     if (hl.length) {
       const sr = await read(path.replace(/([^/]+)$/, '_rels/$1.rels'));
       const sm = sr ? new Map([...sr.getElementsByTagName('Relationship')].map(r => [r.getAttribute('Id'), r.getAttribute('Target')])) : new Map();
-      [...hl].forEach(h => { const u = sm.get(h.getAttributeNS(RNS, 'id') || h.getAttribute('r:id')); if (u && /^(https?:|mailto:|tel:)/i.test(u)) links.set(h.getAttribute('ref').split(':')[0], u); });
+      [...hl].forEach(h => { const u = sm.get(h.getAttributeNS(RNS, 'id') || h.getAttribute('r:id')); if (u && /^(https?:|mailto:|tel:)/i.test(u)) { const c = cellRef((h.getAttribute('ref') || '').split(':')[0]); if (c) links.set(c.L + c.r, u); } });
     }
     const grid = new Map(); // fila → Map(col → {v, fill, link})
-    for (const row of doc.getElementsByTagNameNS(NS, 'row')) {
-      const r = +row.getAttribute('r'), cells = new Map();
-      for (const c of kids(row, 'c')) {
-        const ref = c.getAttribute('r'), t = c.getAttribute('t'), x = xfs[+(c.getAttribute('s') || 0)] || {};
+    walkCells(doc.getElementsByTagNameNS(NS, 'row'), kids, (row, r, c, L) => {
+      if (!c) return;
+      const cells = grid.get(r) || new Map();
+      {
+        const ref = L + r, t = c.getAttribute('t'), x = xfs[+(c.getAttribute('s') || 0)] || {};
         const vEl = kid(c, 'v');
         let v = '';
         if (t === 's') v = ss[+vEl?.textContent] ?? '';
@@ -87,17 +88,16 @@ async function readXlsx(buf) {
         else if (t === 'str' || t === 'e' || t === 'd') v = vEl?.textContent ?? '';
         else if (vEl) {
           const n = +vEl.textContent;
-          if (x.date && n > 0 && n < 2958466) v = fmtDate(n, d1904, x.time);
+          if (x.date && n >= 0 && n < 2958466 && (n >= 1 || x.time)) v = fmtDate(n, d1904, x.time);
           else if (x.pct) v = (Math.round(n * 10000) / 100).toLocaleString('es-ES') + ' %';
           else if (x.thousands || x.dec > 0) v = n.toLocaleString('es-ES', { maximumFractionDigits: Math.max(0, x.dec), minimumFractionDigits: Math.max(0, x.dec) });
           else v = Number.isInteger(n) ? String(n) : String(Math.round(n * 1e6) / 1e6).replace('.', ',');
         }
         v = clean(v);
         const link = links.get(ref);
-        if (v || link) cells.set(colOf(ref), { v, fill: x.fill, link });
+        if (v || link) { cells.set(L, { v, fill: /^[0-9A-F]{6,8}$/i.test(x.fill) ? x.fill : '', link }); grid.set(r, cells); }
       }
-      if (cells.size) grid.set(r, cells);
-    }
+    });
     sheets.push(buildSheet(name, hidden, grid));
   }
   return sheets;
@@ -191,14 +191,16 @@ export const XS = { file: null, sheets: [], si: 0, flagOnly: false, fcol: '', fv
 export async function openFile(file) {
   const buf = await file.arrayBuffer();
   const isCsv = /\.(csv|tsv|txt)$/i.test(file.name);
-  const sheets = isCsv ? csvToSheets(new TextDecoder().decode(buf), file.name) : await readXlsx(buf);
+  const sheets = isCsv ? csvToSheets(decodeText(buf), file.name) : await readXlsx(buf);
   if (!sheets.some(s => s.rows.length)) throw new Error('El archivo no tiene filas con datos.');
   Object.assign(XS, { file: { name: file.name, size: file.size }, sheets, si: Math.max(0, sheets.findIndex(s => !s.hidden && s.rows.length)), flagOnly: false, fcol: '', fval: '', limit: 150, showHidden: false });
   // recientes: se guarda el archivo para reabrirlo sin buscarlo de nuevo
   if (buf.byteLength <= MAX_KEEP) {
     const rec = recent().filter(x => x.name !== file.name);
     rec.unshift({ name: file.name, at: new Date().toISOString(), csv: isCsv, b64: b64of(buf) });
-    for (let n = Math.min(rec.length, 3); n > 0; n--) { try { localStorage.setItem(KEY, JSON.stringify(rec.slice(0, n))); break; } catch { /* sin espacio: guardar menos */ } }
+    // como mucho ~2,5 M caracteres en total, para dejar sitio al stock rule y al borrador del editor
+    let keep = rec.slice(0, 3); while (keep.length > 1 && JSON.stringify(keep).length > 2.5e6) keep = keep.slice(0, -1);
+    for (let n = keep.length; n > 0; n--) { try { localStorage.setItem(KEY, JSON.stringify(keep.slice(0, n))); break; } catch { /* sin espacio: guardar menos */ } }
   }
 }
 export const recent = () => { const v = lsGet(KEY, []); return Array.isArray(v) ? v : []; };
@@ -276,7 +278,7 @@ export function xlsView() {
   const mode = XS.mode || (matchMedia('(min-width: 900px)').matches ? 'table' : 'cards');
   let h = `<header class="ph"><div class="crumb"><button type="button" class="linkb" data-x="close">Abrir otro</button></div><h1 class="xh1">${esc(XS.file.name)}</h1>
     <div class="meta">${esc(sh.caption || sh.name)} · ${sh.rows.length} filas · vista «${esc(t.name)}»${t.src === 'auto' ? '' : ` (${t.src})`}</div>
-    <div class="acts"><button type="button" class="sm ghost" data-x="tpl">Ajustar vista</button><button type="button" class="sm ghost ${mode === 'cards' ? 'on' : ''}" data-xmode="cards">Tarjetas</button><button type="button" class="sm ghost ${mode === 'table' ? 'on' : ''}" data-xmode="table">Tabla</button></div></header>`;
+    <div class="acts"><button type="button" class="sm ghost" data-x="tpl">Ajustar vista</button>${st.editing ? '<button type="button" class="sm ghost" data-x="tocat">Añadir al catálogo</button>' : ''}<button type="button" class="sm ghost ${mode === 'cards' ? 'on' : ''}" data-xmode="cards">Tarjetas</button><button type="button" class="sm ghost ${mode === 'table' ? 'on' : ''}" data-xmode="table">Tabla</button></div></header>`;
   if (visibleSheets.length > 1 || nHidden) h += `<div class="seg scroll" role="group" aria-label="Hojas">${visibleSheets.map(({ s, i }) => `<button type="button" class="${i === XS.si ? 'on' : ''}" data-xsheet="${i}">${esc(s.name)}${s.hidden ? ' <small>oculta</small>' : ''}</button>`).join('')}${nHidden ? `<button type="button" data-x="hidden">${XS.showHidden ? 'Ocultar ocultas' : `+${nHidden} ocultas`}</button>` : ''}</div>`;
   h += `<div class="filters">${t.flag ? `<label class="sw"><input type="checkbox" data-x="flag" ${XS.flagOnly ? 'checked' : ''}><span>Solo «${esc(t.flag.label || 'destacadas')}» (${nFlag})</span></label>` : ''}
     ${filterCols.length ? `<select data-xf="col" aria-label="Filtrar por columna"><option value="">Filtrar por…</option>${filterCols.map(c => `<option value="${esc(c.key)}" ${XS.fcol === c.key ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select>` : ''}
@@ -304,7 +306,7 @@ export function xlsView() {
 export function templateDialogHTML() {
   const sh = curSheet(), t = templateFor(sh);
   const role = k => (k === t.title ? 'title' : (t.sub || []).includes(k) ? 'sub' : (t.main || []).includes(k) ? 'main' : (t.hide || []).includes(k) ? 'hide' : 'more');
-  const opt = (v, l, cur) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`;
+  const opt = (v, l, cur) => `<option value="${esc(v)}" ${cur === v ? 'selected' : ''}>${l}</option>`;
   const colOpts = cur => '<option value="">— ninguna —</option>' + sh.cols.map(c => opt(c.key, esc(c.label), cur)).join('');
   return `<p class="mut small">Elige cómo se muestra este tipo de archivo. Se reconoce por sus cabeceras: la próxima vez que abras un archivo con las mismas columnas se aplicará sola. Solo se guarda la estructura, nunca los datos.</p>
     <label class="fld"><span>Nombre de la vista</span><input name="tname" value="${esc(t.src === 'auto' ? sh.name : t.name)}"></label>

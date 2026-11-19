@@ -8,7 +8,8 @@ export const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 
 export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
-export const cmp = (a, b) => String(a).localeCompare(String(b), 'es', { numeric: true, sensitivity: 'base' });
+const COLL = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
+export const cmp = (a, b) => COLL.compare(String(a), String(b));
 
 /** Normaliza para comparar: sin acentos, minúsculas, solo [a-z0-9]. */
 export const nrm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -33,7 +34,8 @@ export function fmtRef(r) {
 }
 
 export const lsGet = (k, def) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? def; } catch { return def; } };
-export const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } };
+/** Guarda en localStorage; devuelve false si no hay espacio o está bloqueado. */
+export const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
 export const lsDel = k => { try { localStorage.removeItem(k); } catch { /* */ } };
 
 const hue = s => { let h = 0; for (const c of String(s).toLowerCase()) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
@@ -82,7 +84,7 @@ export function parseTable(text) {
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
-    else if (c === '"') q = true;
+    else if (c === '"' && cur === '') q = true; // solo abre comillas al principio del campo
     else if (c === sep) { row.push(cur); cur = ''; }
     else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
     else if (c !== '\r') cur += c;
@@ -91,6 +93,43 @@ export function parseTable(text) {
   return rows.filter(r => r.some(x => x.trim()));
 }
 
-export const csvLine = r => r.map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(';');
+/** Línea CSV con «;». Los valores que empiezan por = + - @ se protegen para que Excel no los ejecute como fórmula. */
+export const csvLine = r => r.map(v => { let x = String(v ?? ''); if (/^[=+\-@]/.test(x) && !/^-?\d+([.,]\d+)?$/.test(x)) x = "'" + x; return '"' + x.replace(/"/g, '""') + '"'; }).join(';');
+/** Texto de un archivo: UTF-8 y, si no lo es, Windows-1252 (CSV guardado por Excel en español). */
+export function decodeText(buf) { try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { return new TextDecoder('windows-1252').decode(buf); } }
 
 export const isUrl = s => /^https?:\/\/\S+$/i.test(String(s || '').trim());
+
+/* ---------- utilidades OOXML (stock rule y visor de Excel) ---------- */
+
+export const colNum = c => [...String(c)].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+export function colName(n) { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+/** «AB12» → {L:'AB', r:12}; null si no es una referencia de celda válida. */
+export function cellRef(ref) { const m = /^([A-Z]{1,3})(\d{1,7})$/.exec(String(ref || '')); return m ? { L: m[1], r: +m[2] } : null; }
+/** Texto de un <si> de sharedStrings: solo <t> directos y de <r>, sin las lecturas fonéticas (<rPh>). */
+export function siText(si) {
+  let out = '';
+  for (const n of si.childNodes) {
+    if (n.nodeType !== 1) continue;
+    if (n.localName === 't') out += n.textContent;
+    else if (n.localName === 'r') for (const t of n.childNodes) if (t.nodeType === 1 && t.localName === 't') out += t.textContent;
+  }
+  return out;
+}
+/**
+ * Recorre filas y celdas de una hoja asignando la posición aunque falten los atributos r
+ * (la especificación permite omitirlos). fn(rowEl, rowNum, cellEl, colLetter).
+ */
+export function walkCells(rows, kids, fn) {
+  let prevR = 0;
+  for (const row of rows) {
+    const ra = +row.getAttribute('r'); const r = ra > 0 ? ra : prevR + 1; prevR = r;
+    let prevC = 0;
+    for (const c of kids(row, 'c')) {
+      const p = cellRef(c.getAttribute('r'));
+      const n = p ? colNum(p.L) : prevC + 1; prevC = n;
+      fn(row, r, c, p ? p.L : colName(n));
+    }
+    if (!kids(row, 'c').length) fn(row, r, null, null);
+  }
+}

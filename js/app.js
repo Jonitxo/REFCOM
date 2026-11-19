@@ -5,7 +5,7 @@ import { st, K, ix, reindex, setOnChange, M, SR, P, TECH, modelByName, serieByNa
 import { loadPublished, pollData, login, savedToken, savedRepo, clearToken } from './github.js';
 import * as V from './views.js';
 import * as X from './xls.js';
-import { openDialog, setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
+import { sheetToCatalogForm, openDialog, setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
 import { importStock, exportStock, stockClear, stockGet, stockToggleDel, stockQty, stockReset, stockAdd, stockFinal, SF } from './stock.js';
 import { invAdd, invQty, invRemove, invUso, invMove, invClear, invCount, invExport, invImport, invGet } from './inv.js';
 
@@ -24,16 +24,20 @@ function parse(hash) {
     if (q.get('g')) return { v: 's', id: q.get('g') };
     if (q.get('r')) return { v: 'r', id: q.get('r') };
     if (q.get('q')) return { v: 'q', id: q.get('q') };
+    if (!h.includes('=') && h) return route; // anclas internas (#main): se queda en la vista actual
     return { v: 'home' };
   }
   const [, a = '', ...rest] = h.split('/');
-  const id = rest.length ? decodeURIComponent(rest.join('/')) : '';
-  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls' };
+  let id = rest.join('/');
+  try { id = decodeURIComponent(id); } catch { /* enlace mal formado (p. ej. «100%»): se usa tal cual */ }
+  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls', ayuda: 'help' };
   return { v: map[a] || 'home', id };
 }
 
 function render() {
-  reindex();
+  if (st.D !== render.lastD || st.snap !== render.lastSnap) { // índices y autocompletado solo si cambian los datos
+    reindex(); render.lastD = st.D; render.lastSnap = st.snap; render.refsDirty = true;
+  }
   route = parse(location.hash);
   const main = $('#main');
   let html = '', title = 'Referencias';
@@ -54,6 +58,7 @@ function render() {
     case 'q': html = V.searchView(route.id); title = 'Buscar'; if ($('#q').value !== route.id && document.activeElement !== $('#q')) $('#q').value = route.id; break;
     case 'ov': html = V.overviewView(cat); title = 'Vista general'; break;
     case 'tec': html = V.techListView(route.id); title = 'Técnico'; break;
+    case 'help': html = V.helpView(); title = 'Cómo se usa'; break;
     case 'xls': html = X.xlsView(); title = X.XS.file ? X.XS.file.name : 'Abrir Excel'; break;
     case 't': { const x = TECH(route.id); html = x ? V.techView(x) : notFound(); title = x ? (x.code || x.title) : 'Técnico'; break; }
     case 'inv': html = V.invView(['tengo', 'pedir', 'devolver', 'stock'].includes(route.id) ? route.id : 'pedir'); title = 'Mi inventario'; break;
@@ -70,7 +75,7 @@ function render() {
   document.title = title === 'Referencias' ? 'Referencias por modelo' : title + ' · Referencias';
   renderChrome();
   // Lista de referencias para el autocompletado del inventario
-  $('#dlRefs').innerHTML = st.D.parts.slice(0, 3000).map(p => `<option value="${esc(p.ref)}">${esc([p.type, p.name].filter(Boolean).join(' · '))}</option>`).join('');
+  if (render.refsDirty) { render.refsDirty = false; $('#dlRefs').innerHTML = st.D.parts.slice(0, 3000).map(p => `<option value="${esc(p.ref)}">${esc([p.type, p.name].filter(Boolean).join(' · '))}</option>`).join(''); }
 }
 render.ctx = {};
 
@@ -79,6 +84,7 @@ function notFound() { return '<div class="empty"><p>No encontrado. Puede haberse
 function renderChrome() {
   document.body.classList.toggle('auth', st.editing);
   $('#dirty').hidden = !(st.editing && st.dirty);
+  $('#dirty').textContent = st.saveErr ? 'Sin publicar · borrador NO guardado' : 'Sin publicar';
   $('#btnAcc').textContent = st.editing ? 'Editar' : 'Acceso';
   $('#btnAcc').classList.toggle('pri', st.editing);
   const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec', xls: 'xls' }[route.v] || '';
@@ -109,6 +115,7 @@ $('#q').addEventListener('keydown', e => {
 });
 $('#qx').addEventListener('click', () => { $('#q').value = ''; $('#q').dispatchEvent(new Event('input')); $('#q').focus(); });
 
+document.querySelector('.skip').addEventListener('click', e => { e.preventDefault(); $('#main').focus(); });
 $('#btnAcc').addEventListener('click', () => (st.editing ? editMenu(render.ctx) : loginForm()));
 
 window.addEventListener('hashchange', () => { render(); if (!location.hash.startsWith('#/buscar')) window.scrollTo(0, 0); $('#main').focus({ preventScroll: true }); });
@@ -152,6 +159,7 @@ document.addEventListener('click', e => {
   if ((el = q('[data-cat]'))) { cat = el.dataset.cat; lsSet(K.cat, cat); render(); return; }
   if ((el = q('[data-jump]'))) { document.getElementById(el.dataset.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   if ((el = q('[data-ovall]'))) { $$('details.ovs').forEach(d => { d.open = el.dataset.ovall === '1'; }); return; }
+
   if ((el = q('[data-act]'))) { act(el.dataset.act, el.dataset.id); return; }
 });
 
@@ -210,6 +218,7 @@ function xAction(a) {
   if (a === 'close') { X.closeFile(); render(); return; }
   if (a === 'hidden') { X.XS.showHidden = !X.XS.showHidden; render(); return; }
   if (a === 'more') { X.XS.limit += 300; keepScroll(render); return; }
+  if (a === 'tocat') { sheetToCatalogForm(X.curSheet()); return; }
   if (a === 'tpl') {
     openDialog('Ajustar vista', X.templateDialogHTML(), {
       wide: true,
@@ -226,6 +235,12 @@ $('#xFile').addEventListener('change', e => { const f = e.target.files[0]; e.tar
 
 async function stockAction(a) {
   if (a === 'import') { $('#skFile').click(); return; }
+  if (a === 'tocat') {
+    const d = stockGet(); if (!d) return;
+    sheetToCatalogForm({ name: d.name, cols: [{ key: 'referencia', label: 'Referencia' }, { key: 'descripcion', label: 'Descripción' }],
+      rows: [...d.rows.filter(x => x.state !== 'del'), ...d.added].map(x => ({ v: { referencia: x.ref, descripcion: x.desc } })) });
+    return;
+  }
   if (a === 'clear') { if (confirm('¿Quitar el stock rule de este dispositivo? Se pierden los cambios no exportados.')) { stockClear(); render(); } return; }
   if (a === 'toinv') {
     const fin = stockFinal(stockGet()), have = invGet().tengo;
@@ -278,6 +293,16 @@ async function shareList(list) {
 
 function keepScroll(fn) { const y = window.scrollY; fn(); window.scrollTo(0, y); }
 
+// Vista general: el contenido de las series plegadas se genera al desplegarlas
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (!d.open || !d.dataset || !d.dataset.lazy) return;
+  const s = d.dataset.lazy === '-' ? null : SR(d.dataset.lazy);
+  const ms = s ? modelsOfSerie(s) : st.D.models.filter(m => !ix.serieOf.has(m.id));
+  d.insertAdjacentHTML('beforeend', V.overviewBody(s, ms));
+  delete d.dataset.lazy;
+}, true);
+
 document.addEventListener('keydown', e => {
   const tag = document.activeElement?.tagName;
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(tag);
@@ -308,7 +333,7 @@ setOnChange(renderChrome);
   await loadPublished();
   const tok = savedToken(), repo = savedRepo();
   if (tok && repo) {
-    try { await login(repo, tok, null, true); }
+    try { if (await login(repo, tok, null, true) === 'stale') setTimeout(() => toast('Tu borrador se hizo sobre una versión anterior: al publicar se avisará del conflicto.'), 800); }
     catch (err) { if (err.fatal) clearToken(); else toast('Sin conexión con GitHub: modo consulta'); }
   }
   render();
