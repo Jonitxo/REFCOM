@@ -5,6 +5,7 @@ import { st, K, ix, reindex, setOnChange, M, SR, P, TECH, modelByName, serieByNa
 import { loadPublished, pollData, login, savedToken, savedRepo, clearToken } from './github.js';
 import * as V from './views.js';
 import * as X from './xls.js';
+import * as TN from './toner.js';
 import { sheetToCatalogForm, openDialog, setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
 import { importStock, exportStock, stockClear, stockGet, stockToggleDel, stockQty, stockReset, stockAdd, stockFinal, SF } from './stock.js';
 import { invAdd, invQty, invRemove, invUso, invMove, invClear, invCount, invExport, invImport, invGet } from './inv.js';
@@ -30,7 +31,7 @@ function parse(hash) {
   const [, a = '', ...rest] = h.split('/');
   let id = rest.join('/');
   try { id = decodeURIComponent(id); } catch { /* enlace mal formado (p. ej. «100%»): se usa tal cual */ }
-  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls', ayuda: 'help' };
+  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls', ayuda: 'help', toner: 'toner' };
   return { v: map[a] || 'home', id };
 }
 
@@ -59,6 +60,7 @@ function render() {
     case 'ov': html = V.overviewView(cat); title = 'Vista general'; break;
     case 'tec': html = V.techListView(route.id); title = 'Técnico'; break;
     case 'help': html = V.helpView(); title = 'Cómo se usa'; break;
+    case 'toner': html = TN.tonerView(route.id); title = 'Stock de tóner'; break;
     case 'xls': html = X.xlsView(); title = X.XS.file ? X.XS.file.name : 'Abrir Excel'; break;
     case 't': { const x = TECH(route.id); html = x ? V.techView(x) : notFound(); title = x ? (x.code || x.title) : 'Técnico'; break; }
     case 'inv': html = V.invView(['tengo', 'pedir', 'devolver', 'stock'].includes(route.id) ? route.id : 'pedir'); title = 'Mi inventario'; break;
@@ -87,7 +89,7 @@ function renderChrome() {
   $('#dirty').textContent = st.saveErr ? 'Sin publicar · borrador NO guardado' : 'Sin publicar';
   $('#btnAcc').textContent = st.editing ? 'Editar' : 'Acceso';
   $('#btnAcc').classList.toggle('pri', st.editing);
-  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec', xls: 'xls' }[route.v] || '';
+  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec', xls: 'xls', toner: 'toner' }[route.v] || '';
   $$('#nav [data-nav]').forEach(a => { const on = a.dataset.nav === act; a.classList.toggle('on', on); on ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
   const n = invCount('pedir');
   $('#invN').textContent = n || ''; $('#invN').hidden = !n;
@@ -138,6 +140,9 @@ document.addEventListener('click', e => {
   if ((el = q('[data-iuso]'))) { invUso(el.dataset.iuso); keepScroll(render); return; }
   if ((el = q('[data-imove]'))) { const [a, b] = el.dataset.imove.split(':'); invMove(a, b, el.dataset.ref); toast(el.dataset.ref + ' pasa a Tengo'); keepScroll(render); return; }
   if ((el = q('[data-idel]'))) { invRemove(el.dataset.idel, el.dataset.ref); keepScroll(render); return; }
+  if ((el = q('[data-tq]'))) { TN.changeQty(el.dataset.d, el.dataset.i, +el.dataset.tq); keepScroll(render); return; }
+  if ((el = q('[data-tedit]'))) { tonerItemForm(el.dataset.d, el.dataset.tedit); return; }
+  if ((el = q('button[data-t]'))) { tonerAction(el.dataset.t, el.dataset.d); return; }
   if ((el = q('[data-xsheet]'))) { Object.assign(X.XS, { si: +el.dataset.xsheet, fcol: '', fval: '', flagOnly: false, limit: 150 }); render(); window.scrollTo(0, 0); return; }
   if ((el = q('[data-xmode]'))) { X.XS.mode = el.dataset.xmode; render(); return; }
   if ((el = q('[data-xrec]'))) { X.openRecent(+el.dataset.xrec).then(render).catch(x => alert(x.message)); return; }
@@ -182,6 +187,8 @@ function act(a, id) {
 document.addEventListener('change', e => {
   const xf = e.target.dataset.xf;
   if (xf) { if (xf === 'col') { X.XS.fcol = e.target.value; X.XS.fval = ''; } else X.XS.fval = e.target.value; render(); return; }
+  if (e.target.hasAttribute('data-tonly')) { TN.TS.only = e.target.checked; keepScroll(render); return; }
+  if (e.target.dataset.tcount) { TN.setCount(e.target.dataset.tcount, e.target.value); return; }
   if (e.target.dataset.x === 'flag') { X.XS.flagOnly = e.target.checked; render(); return; }
   const f = e.target.dataset.filter;
   if (!f) return;
@@ -194,6 +201,7 @@ document.addEventListener('input', e => {
   $$('.list .row[data-s], .inv .ii[data-s], .xc[data-s], .xtbl tr[data-s]', $('#main')).forEach(r => { r.hidden = !!v && !r.dataset.s.includes(v); });
   $$('.xgrp', $('#main')).forEach(g => { g.hidden = !g.querySelector('.xc:not([hidden])'); });
   if (e.target.classList.contains('sk-q')) SF.q = e.target.value;
+  if (e.target.classList.contains('tq')) { TN.TS.q = e.target.value; TN.applyFilter(); }
 });
 document.addEventListener('submit', e => {
   const f = e.target;
@@ -213,6 +221,74 @@ document.addEventListener('submit', e => {
   render();
   const inp = $('form[data-form=invadd] input[name=ref]'); if (inp && !mobile()) inp.focus();
 });
+/* ---------- stock de tóner ---------- */
+async function shareOrCopy(title, text, okMsg) {
+  if (navigator.share) { try { await navigator.share({ title, text }); return; } catch (x) { if (x && x.name === 'AbortError') return; } }
+  copyText(text); toast(okMsg);
+}
+function tonerItemForm(did, iid) {
+  const d = TN.delegs().find(x => x.id === did), it = iid ? d?.items.find(x => x.id === iid) : null;
+  if (!d) return;
+  openDialog(it ? 'Editar fila' : 'Nueva fila · ' + d.name, TN.itemFormHTML(it), {
+    extra: it ? '<button type="button" class="ghost bad" data-del>Borrar fila</button>' : '',
+    mount(f) { f.querySelector('[data-del]')?.addEventListener('click', () => { if (confirm(`¿Borrar ${it.model} ${it.color}?`)) { TN.deleteItem(did, iid); close(); keepScroll(render); } }); },
+    submit(f) { TN.saveItem(did, iid, f); keepScroll(render); toast('Guardado'); }
+  });
+}
+function delegForm(did) {
+  const d = TN.delegs().find(x => x.id === did), others = TN.delegs().filter(x => x.id !== did);
+  openDialog(d ? 'Delegación ' + d.name : 'Nueva delegación', `<label class="fld"><span>Nombre</span><input name="name" required value="${esc(d?.name || '')}" placeholder="VITORIA"></label>
+    ${others.length ? `<label class="fld"><span>Copiar las filas de otra delegación (stock actual a 0)</span><select name="from"><option value="">— no copiar —</option>${others.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></label>` : ''}`, {
+    extra: d ? '<button type="button" class="ghost bad" data-del>Borrar delegación</button><button type="button" class="ghost" data-new>+ Nueva</button>' : '',
+    mount(f) {
+      f.querySelector('[data-del]')?.addEventListener('click', () => { if (confirm(`¿Borrar la delegación ${d.name} y sus ${d.items.length} filas? Se puede deshacer hasta publicar.`)) { TN.deleteDeleg(d.id); close(); location.hash = '#/toner'; render(); } });
+      f.querySelector('[data-new]')?.addEventListener('click', () => { close(); delegForm(null); });
+    },
+    submit(f) {
+      const name = f.elements.name.value;
+      let x = d;
+      if (d) TN.renameDeleg(d.id, name); else x = TN.addDeleg(name);
+      const from = f.elements.from?.value;
+      const n = from ? TN.copyItemsFrom(x.id, from) : 0;
+      location.hash = '#/toner/' + encodeURIComponent(x.name); render();
+      toast(n ? `${n} filas copiadas` : 'Guardado');
+    }
+  });
+}
+async function tonerAction(a, did) {
+  if (a === 'mine') { TN.setMine(did); render(); toast('Se abrirá siempre esta delegación'); return; }
+  if (a === 'order') { await shareOrCopy('Reposición de tóner', TN.orderText(did), 'Pedido copiado: pégalo en Teams o en el correo'); return; }
+  if (a === 'export') {
+    try {
+      const { blob, name } = await TN.exportXlsx(), file = new File([blob], name, { type: blob.type });
+      if (mobile() && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (x) { if (x && x.name === 'AbortError') return; } }
+      const u = URL.createObjectURL(blob), l = document.createElement('a'); l.href = u; l.download = name; l.click(); setTimeout(() => URL.revokeObjectURL(u), 2000);
+    } catch (x) { alert('No se pudo generar el Excel: ' + x.message); }
+    return;
+  }
+  if (!st.editing) return;
+  if (a === 'import') { $('#tnFile').click(); return; }
+  if (a === 'newdeleg') { delegForm(null); return; }
+  if (a === 'deleg') { delegForm(did); return; }
+  if (a === 'add') { tonerItemForm(did, null); return; }
+  if (a === 'count') { TN.startCount(did); render(); return; }
+  if (a === 'countok') {
+    const diffs = TN.countDiffs();
+    if (!diffs.length) { if (confirm('No hay diferencias con el stock registrado. ¿Guardar la fecha de recuento y salir del modo recuento?')) { TN.applyCount(); render(); toast('Recuento guardado'); } return; }
+    openDialog('Diferencias del recuento', `<p class="mut small">Se actualizará el stock actual de estas filas y la fecha del último recuento.</p><ul class="ul">${diffs.map(({ i, to }) => `<li><b>${esc(i.model)} ${esc(i.color)}</b> (${esc(i.edp)}): ${i.a} → <b>${to}</b> <span class="mut">(${to - i.a > 0 ? '+' : ''}${to - i.a})</span></li>`).join('')}</ul>`, {
+      label: 'Aplicar', submit() { const n = TN.applyCount(); keepScroll(render); toast(`${n} filas actualizadas`); }
+    });
+  }
+}
+$('#tnFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const sheets = await X.readXlsx(await f.arrayBuffer());
+    if (TN.delegs().length && !confirm('Las delegaciones del archivo sustituirán a las que tengan el mismo nombre. Se puede deshacer hasta publicar. ¿Continuar?')) return;
+    const r = TN.importSheets(sheets); render(); alert('Importado:\n' + r.join('\n') + '\n\nRevisa y pulsa «Publicar» para compartirlo con el equipo.');
+  } catch (x) { alert('No se pudo importar: ' + (x.message || x)); }
+});
+
 function xAction(a) {
   if (a === 'open') { $('#xFile').click(); return; }
   if (a === 'close') { X.closeFile(); render(); return; }

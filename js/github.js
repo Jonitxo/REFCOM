@@ -140,6 +140,10 @@ export function diffLines(a, b) {
   if (JSON.stringify(a.types) !== JSON.stringify(b.types)) out.push('Tipos de pieza modificados');
   if (JSON.stringify(a.config || {}) !== JSON.stringify(b.config || {})) out.push('Correo de avisos modificado');
   if (JSON.stringify(a.templates || []) !== JSON.stringify(b.templates || [])) out.push('Vistas de Excel del equipo modificadas');
+  if (JSON.stringify(a.toner || {}) !== JSON.stringify(b.toner || {})) {
+    const cnt = t => (t?.delegs || []).reduce((n, d) => n + d.items.length, 0);
+    out.push(`Stock de tóner modificado (${(b.toner?.delegs || []).length} delegaciones, ${cnt(b.toner)} filas)`);
+  }
   return out;
 }
 

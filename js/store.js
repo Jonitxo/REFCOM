@@ -12,6 +12,7 @@
 // Una pieza asignada a una serie ({k:'s'}) aplica a todos sus modelos, incluidos los futuros.
 
 import { uid, nrm, cmp, refPrefix, lsDel, cleanRef } from './util.js';
+import { sanitizeToner } from './toner.js';
 
 export const VERSION = 7;
 export const K = {
@@ -34,7 +35,7 @@ export function defTypes() {
     t('Consumible', 'Consumibles')
   ];
 }
-export const emptyData = () => ({ version: VERSION, updated: '', types: defTypes(), series: [], models: [], parts: [], tech: [], config: { contacto: '' }, templates: [] });
+export const emptyData = () => ({ version: VERSION, updated: '', types: defTypes(), series: [], models: [], parts: [], tech: [], config: { contacto: '' }, templates: [], toner: { delegs: [] } });
 
 /* ---------- migraciones ---------- */
 
@@ -111,6 +112,7 @@ function sanitize(d) {
     id: s(t.id), name: s(t.name), sig: sa(t.sig), title: s(t.title), sub: sa(t.sub), main: sa(t.main), hide: sa(t.hide), group: s(t.group), sort: s(t.sort),
     flag: t.flag && t.flag.col ? { col: s(t.flag.col), op: ['gt0', 'lt1', 'filled'].includes(t.flag.op) ? t.flag.op : 'gt0', label: s(t.flag.label) } : null
   }));
+  d.toner = sanitizeToner(d.toner);
   return d;
 }
 
