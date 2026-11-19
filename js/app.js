@@ -4,7 +4,8 @@ import { $, $$, esc, lsGet, lsSet, copyText, toast, download, nrm, cmp } from '.
 import { st, K, ix, reindex, setOnChange, M, SR, P, TECH, modelByName, serieByName, partByRef, supersededBy, modelsOfSerie, undo } from './store.js';
 import { loadPublished, pollData, login, savedToken, savedRepo, clearToken } from './github.js';
 import * as V from './views.js';
-import { setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
+import * as X from './xls.js';
+import { openDialog, setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
 import { importStock, exportStock, stockClear, stockGet, stockToggleDel, stockQty, stockReset, stockAdd, stockFinal, SF } from './stock.js';
 import { invAdd, invQty, invRemove, invUso, invMove, invClear, invCount, invExport, invImport, invGet } from './inv.js';
 
@@ -27,7 +28,7 @@ function parse(hash) {
   }
   const [, a = '', ...rest] = h.split('/');
   const id = rest.length ? decodeURIComponent(rest.join('/')) : '';
-  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't' };
+  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls' };
   return { v: map[a] || 'home', id };
 }
 
@@ -53,6 +54,7 @@ function render() {
     case 'q': html = V.searchView(route.id); title = 'Buscar'; if ($('#q').value !== route.id && document.activeElement !== $('#q')) $('#q').value = route.id; break;
     case 'ov': html = V.overviewView(cat); title = 'Vista general'; break;
     case 'tec': html = V.techListView(route.id); title = 'Técnico'; break;
+    case 'xls': html = X.xlsView(); title = X.XS.file ? X.XS.file.name : 'Abrir Excel'; break;
     case 't': { const x = TECH(route.id); html = x ? V.techView(x) : notFound(); title = x ? (x.code || x.title) : 'Técnico'; break; }
     case 'inv': html = V.invView(['tengo', 'pedir', 'devolver', 'stock'].includes(route.id) ? route.id : 'pedir'); title = 'Mi inventario'; break;
     case 'gen': case 'un': html = V.genView(route.v); break;
@@ -79,11 +81,10 @@ function renderChrome() {
   $('#dirty').hidden = !(st.editing && st.dirty);
   $('#btnAcc').textContent = st.editing ? 'Editar' : 'Acceso';
   $('#btnAcc').classList.toggle('pri', st.editing);
-  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec' }[route.v] || '';
+  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec', xls: 'xls' }[route.v] || '';
   $$('#nav [data-nav]').forEach(a => { const on = a.dataset.nav === act; a.classList.toggle('on', on); on ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
   const n = invCount('pedir');
   $('#invN').textContent = n || ''; $('#invN').hidden = !n;
-  $('#navEdit').hidden = !st.editing;
 }
 
 function pushRecent(id) { const r = lsGet(K.rec, []).filter(x => x !== id); r.unshift(id); lsSet(K.rec, r.slice(0, 8)); }
@@ -109,7 +110,6 @@ $('#q').addEventListener('keydown', e => {
 $('#qx').addEventListener('click', () => { $('#q').value = ''; $('#q').dispatchEvent(new Event('input')); $('#q').focus(); });
 
 $('#btnAcc').addEventListener('click', () => (st.editing ? editMenu(render.ctx) : loginForm()));
-$('#navEdit').addEventListener('click', () => editMenu(render.ctx));
 
 window.addEventListener('hashchange', () => { render(); if (!location.hash.startsWith('#/buscar')) window.scrollTo(0, 0); $('#main').focus({ preventScroll: true }); });
 
@@ -131,6 +131,11 @@ document.addEventListener('click', e => {
   if ((el = q('[data-iuso]'))) { invUso(el.dataset.iuso); keepScroll(render); return; }
   if ((el = q('[data-imove]'))) { const [a, b] = el.dataset.imove.split(':'); invMove(a, b, el.dataset.ref); toast(el.dataset.ref + ' pasa a Tengo'); keepScroll(render); return; }
   if ((el = q('[data-idel]'))) { invRemove(el.dataset.idel, el.dataset.ref); keepScroll(render); return; }
+  if ((el = q('[data-xsheet]'))) { Object.assign(X.XS, { si: +el.dataset.xsheet, fcol: '', fval: '', flagOnly: false, limit: 150 }); render(); window.scrollTo(0, 0); return; }
+  if ((el = q('[data-xmode]'))) { X.XS.mode = el.dataset.xmode; render(); return; }
+  if ((el = q('[data-xrec]'))) { X.openRecent(+el.dataset.xrec).then(render).catch(x => alert(x.message)); return; }
+  if ((el = q('[data-xforget]'))) { X.forgetRecent(+el.dataset.xforget); render(); return; }
+  if ((el = q('button[data-x]'))) { xAction(el.dataset.x); return; }
   if ((el = q('[data-sk]'))) { stockAction(el.dataset.sk, el); return; }
   if ((el = q('[data-skf]'))) { SF.f = el.dataset.skf; render(); return; }
   if ((el = q('[data-skq]'))) { stockQty(el.dataset.k, +el.dataset.skq); keepScroll(render); return; }
@@ -167,6 +172,9 @@ function act(a, id) {
 }
 
 document.addEventListener('change', e => {
+  const xf = e.target.dataset.xf;
+  if (xf) { if (xf === 'col') { X.XS.fcol = e.target.value; X.XS.fval = ''; } else X.XS.fval = e.target.value; render(); return; }
+  if (e.target.dataset.x === 'flag') { X.XS.flagOnly = e.target.checked; render(); return; }
   const f = e.target.dataset.filter;
   if (!f) return;
   V.F[f] = f === 'hab' ? e.target.checked : e.target.value;
@@ -175,7 +183,8 @@ document.addEventListener('change', e => {
 document.addEventListener('input', e => {
   if (!e.target.classList.contains('tf')) return;
   const v = nrm(e.target.value);
-  $$('.list .row[data-s], .inv .ii[data-s]', $('#main')).forEach(r => { r.hidden = !!v && !r.dataset.s.includes(v); });
+  $$('.list .row[data-s], .inv .ii[data-s], .xc[data-s], .xtbl tr[data-s]', $('#main')).forEach(r => { r.hidden = !!v && !r.dataset.s.includes(v); });
+  $$('.xgrp', $('#main')).forEach(g => { g.hidden = !g.querySelector('.xc:not([hidden])'); });
   if (e.target.classList.contains('sk-q')) SF.q = e.target.value;
 });
 document.addEventListener('submit', e => {
@@ -196,6 +205,25 @@ document.addEventListener('submit', e => {
   render();
   const inp = $('form[data-form=invadd] input[name=ref]'); if (inp && !mobile()) inp.focus();
 });
+function xAction(a) {
+  if (a === 'open') { $('#xFile').click(); return; }
+  if (a === 'close') { X.closeFile(); render(); return; }
+  if (a === 'hidden') { X.XS.showHidden = !X.XS.showHidden; render(); return; }
+  if (a === 'more') { X.XS.limit += 300; keepScroll(render); return; }
+  if (a === 'tpl') {
+    openDialog('Ajustar vista', X.templateDialogHTML(), {
+      wide: true,
+      mount(f) { f.querySelector('[data-xreset]')?.addEventListener('click', () => { X.resetTemplate(X.curSheet()); close(); render(); toast('Vista por defecto'); }); },
+      submit(f) { X.saveTemplate(X.curSheet(), X.readTemplateForm(f), !!f.elements.team?.checked); render(); toast(f.elements.team?.checked ? 'Vista guardada: se publicará con «Publicar»' : 'Vista guardada en este dispositivo'); }
+    });
+  }
+}
+async function openX(file) {
+  try { await X.openFile(file); if (location.hash !== '#/excel') location.hash = '#/excel'; else render(); }
+  catch (x) { alert('No se pudo abrir: ' + (x.message || x)); }
+}
+$('#xFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) openX(f); });
+
 async function stockAction(a) {
   if (a === 'import') { $('#skFile').click(); return; }
   if (a === 'clear') { if (confirm('¿Quitar el stock rule de este dispositivo? Se pierden los cambios no exportados.')) { stockClear(); render(); } return; }
@@ -284,5 +312,6 @@ setOnChange(renderChrome);
     catch (err) { if (err.fatal) clearToken(); else toast('Sin conexión con GitHub: modo consulta'); }
   }
   render();
+  if (/[?&]shared=1/.test(location.search + location.hash)) { const f = await X.takeShared(); if (f) { history.replaceState(null, '', location.pathname + '#/excel'); openX(f); } }
   if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

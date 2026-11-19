@@ -34,7 +34,7 @@ export function defTypes() {
     t('Consumible', 'Consumibles')
   ];
 }
-export const emptyData = () => ({ version: VERSION, updated: '', types: defTypes(), series: [], models: [], parts: [], tech: [], config: { contacto: '' } });
+export const emptyData = () => ({ version: VERSION, updated: '', types: defTypes(), series: [], models: [], parts: [], tech: [], config: { contacto: '' }, templates: [] });
 
 /* ---------- migraciones ---------- */
 
@@ -103,6 +103,12 @@ function sanitize(d) {
     refs: (Array.isArray(x.refs) ? x.refs : []).map(cleanRef).filter(Boolean), t: okT(x.t)
   }));
   d.config = { contacto: s(d.config?.contacto) };
+  // vistas de Excel publicadas para el equipo (solo estructura de columnas)
+  const sa = v => (Array.isArray(v) ? v.map(s).filter(Boolean) : []);
+  d.templates = (Array.isArray(d.templates) ? d.templates : []).filter(t => t && t.id && Array.isArray(t.sig) && t.sig.length).map(t => ({
+    id: s(t.id), name: s(t.name), sig: sa(t.sig), title: s(t.title), sub: sa(t.sub), main: sa(t.main), hide: sa(t.hide), group: s(t.group), sort: s(t.sort),
+    flag: t.flag && t.flag.col ? { col: s(t.flag.col), op: ['gt0', 'lt1', 'filled'].includes(t.flag.op) ? t.flag.op : 'gt0', label: s(t.flag.label) } : null
+  }));
   return d;
 }
 
