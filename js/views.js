@@ -6,6 +6,7 @@ import {
   modelsOfSerie, isCommon, originOf, despieceOf, categories, supersededBy, techOf, techMo
 } from './store.js';
 import { LISTS, invGet, invQtyOf } from './inv.js';
+import { stockView, stockGet } from './stock.js';
 
 /* ---------- enlaces y piezas pequeñas ---------- */
 
@@ -286,8 +287,10 @@ function matrixHTML(ms, serie) {
 /* ---------- INVENTARIO PERSONAL ---------- */
 
 export function invView(list) {
-  const v = invGet(), items = v[list];
-  const tabs = Object.entries(LISTS).map(([k, l]) => `<a href="#/inv/${k}" class="${k === list ? 'on' : ''}" ${k === list ? 'aria-current="page"' : ''}>${l} <small>${v[k].length}</small></a>`).join('');
+  const v = invGet(), items = v[list] || [], sk = stockGet();
+  const tabs = Object.entries(LISTS).map(([k, l]) => `<a href="#/inv/${k}" class="${k === list ? 'on' : ''}" ${k === list ? 'aria-current="page"' : ''}>${l} <small>${v[k].length}</small></a>`).join('')
+    + `<a href="#/inv/stock" class="${list === 'stock' ? 'on' : ''}" ${list === 'stock' ? 'aria-current="page"' : ''}>Stock rule${sk ? ` <small>${sk.rows.length + sk.added.length}</small>` : ''}</a>`;
+  if (list === 'stock') return `<header class="ph"><h1>Mi inventario</h1><div class="meta">Se guarda solo en este dispositivo.</div></header><nav class="seg tabs scroll" aria-label="Listas">${tabs}</nav>` + stockView();
   const hint = { tengo: 'Piezas que llevas. Marca si son de uso habitual u ocasional.', pedir: 'Piezas que necesitas pedir. «Recibida» la pasa a «Tengo».', devolver: 'Piezas que vas a devolver.' }[list];
   let h = `<header class="ph"><h1>Mi inventario</h1><div class="meta">Se guarda solo en este dispositivo.</div></header><nav class="seg tabs" aria-label="Listas">${tabs}</nav>
   <form class="invadd" data-form="invadd" data-list="${list}" autocomplete="off"><input name="ref" list="dlRefs" placeholder="Referencia" aria-label="Referencia" required><input name="qty" type="number" min="1" value="1" inputmode="numeric" aria-label="Cantidad"><button class="pri">Añadir</button></form>
