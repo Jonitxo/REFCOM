@@ -274,20 +274,25 @@ export function exportCsv(modelIds, name) {
   toast(rows.length + ' filas exportadas');
 }
 
-function importRows(rows, create) {
+/** opts.noModel: 'gen' (pieza general) o 'none' (queda «Sin asignar»); opts.origin: asignar por prefijo de la referencia. */
+export function importRows(rows, create, opts = { noModel: 'gen', origin: false }) {
   const MAP = { serie: 'serie', categoria: 'cat', familia: 'cat', modelo: 'model', codigo: 'codes', codigos: 'codes', plataforma: 'plat', franja: 'franja', despiece: 'dsp', tipo: 'type', referencia: 'ref', descripcion: 'name', uso: 'uso', notas: 'note', verificar: 'chk', sustituyea: 'old' };
   const hdr = rows[0].map(nrm), hasHdr = hdr.includes('referencia');
   let col = {};
   if (hasHdr) { hdr.forEach((h, i) => { const k = MAP[h]; if (k && col[k] === undefined) col[k] = i; }); rows = rows.slice(1); }
   else col = { model: 0, type: 1, ref: 2, name: 3 };
   const g = (r, k) => (col[k] === undefined ? '' : String(r[col[k]] ?? '').trim());
-  const res = { nuevas: 0, ampliadas: 0, modelos: 0, series: 0, omitidas: 0, faltan: new Set() };
+  const res = { nuevas: 0, ampliadas: 0, modelos: 0, series: 0, omitidas: 0, origen: 0, faltan: new Set() };
+  const byRef = new Map(st.D.parts.map(p => [nrm(p.ref), p]));
   rows.forEach(r => {
     const ref = cleanRef(g(r, 'ref')); if (!ref) { res.omitidas++; return; }
     const mname = g(r, 'model'), type = g(r, 'type');
     let targets = [], gen = false;
-    if (!mname) gen = true;
-    else {
+    if (!mname) {
+      const o = opts.origin ? originOf(ref) : [];
+      if (o.length) { targets = o.map(m => ({ k: 'm', id: m.id })); res.origen++; }
+      else gen = opts.noModel === 'gen';
+    } else {
       let m = st.D.models.find(x => nrm(x.name) === nrm(mname));
       if (!m) {
         if (!create) { res.faltan.add(mname); res.omitidas++; return; }
@@ -303,10 +308,10 @@ function importRows(rows, create) {
       targets = [{ k: 'm', id: m.id }];
     }
     ensureType(type);
-    const ex = st.D.parts.find(p => nrm(p.ref) === nrm(ref));
+    const ex = byRef.get(nrm(ref));
     const old = g(r, 'old').split(/[,;\n]+/).map(cleanRef).filter(x => x && nrm(x) !== nrm(ref));
     if (ex) { addT(ex, targets); ex.old = [...new Set([...ex.old, ...old])]; if (!ex.name && g(r, 'name')) ex.name = g(r, 'name'); if (!ex.type && type) ex.type = type; res.ampliadas++; }
-    else { st.D.parts.push({ id: uid(), ref, type, name: g(r, 'name'), note: g(r, 'note'), hab: !/^poco|^ocas/i.test(g(r, 'uso')), chk: /^(s[ií]|x|1|true)$/i.test(g(r, 'chk')), gen, old, t: targets }); res.nuevas++; }
+    else { const np = { id: uid(), ref, type, name: g(r, 'name'), note: g(r, 'note'), hab: !/^poco|^ocas/i.test(g(r, 'uso')), chk: /^(s[ií]|x|1|true)$/i.test(g(r, 'chk')), gen, old, t: targets }; st.D.parts.push(np); byRef.set(nrm(ref), np); res.nuevas++; }
   });
   return res;
 }
@@ -583,6 +588,45 @@ export function techTableForm() {
       });
       changed(`${n} entradas nuevas, ${u} actualizadas`);
       if (miss.size) alert('No existen (se ignoraron como destino): ' + [...miss].slice(0, 10).join(', '));
+    }
+  });
+}
+
+/* ---------- DE UNA HOJA DE EXCEL AL CATÁLOGO (editor) ---------- */
+
+/** sheet: {name, cols:[{key,label}], rows:[{v:{key:valor}}]} del visor de Excel. */
+export function sheetToCatalogForm(sheet) {
+  const ks = sheet.cols.map(c => c.key);
+  const guess = re => ks.find(k => re.test(k)) || '';
+  const paren = k => k && sheet.rows.filter(r => /\(([^()]+)\)\s*$/.test(r.v[k] || '')).length > sheet.rows.length / 2;
+  const refG = guess(/referencia|^ref|partnumber|edp|codigo|code/) || guess(/^model$/);
+  const opts = cur => '<option value="">— ninguna —</option>' + sheet.cols.map(c => `<option value="${esc(c.key)}" ${c.key === cur ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
+  openDialog('Añadir al catálogo', `<p class="mut small">Crea en el catálogo las referencias de esta hoja (${sheet.rows.length} filas). Las que ya existen solo se amplían con los modelos indicados; no se borra nada y se puede deshacer hasta publicar.</p>
+    <div class="two">${fld('Columna de referencia', `<select name="ref">${opts(refG)}</select>`)}${fld('Columna de descripción', `<select name="desc">${opts(guess(/descrip|nombre|^name/))}</select>`)}</div>
+    <label class="sw"><input type="checkbox" name="paren" ${paren(refG) ? 'checked' : ''}><span>La referencia va entre paréntesis al final («DESCRIPCIÓN (REF)»)</span></label>
+    <div class="two">${fld('Columna de modelo', `<select name="model">${opts(guess(/^modelo$|^model$/) === refG ? '' : guess(/^modelo$|^model$/))}</select>`)}${fld('Columna de tipo de pieza', `<select name="type">${opts(guess(/^tipodepieza$|^tipopieza$|^parttype$/))}</select>`)}</div>
+    ${fld('Tipo para todas (si no hay columna de tipo)', '<input name="ftype" list="dlType" placeholder="Opcional">')}
+    <label class="sw"><input type="checkbox" name="origin" checked><span>Sin modelo: asignar al modelo cuyo código coincide con el prefijo (D0DZ… → modelo D0DZ)</span></label>
+    <label class="sw"><input type="checkbox" name="gen"><span>Sin modelo ni coincidencia: marcar como generales (si no, quedan en «Sin asignar»)</span></label>
+    <label class="sw"><input type="checkbox" name="create"><span>Crear los modelos que no existan</span></label>
+    <datalist id="dlType">${st.D.types.map(t => `<option value="${esc(t.name)}">`).join('')}</datalist>`, {
+    label: 'Añadir',
+    submit(f) {
+      const rk = val(f, 'ref'); if (!rk) throw new Error('Elige la columna de referencia');
+      const dk = val(f, 'desc'), mk = val(f, 'model'), tk = val(f, 'type'), ft = val(f, 'ftype'), par = f.elements.paren.checked;
+      const rows = [['Modelo', 'Tipo', 'Referencia', 'Descripción']];
+      sheet.rows.forEach(r => {
+        let ref = r.v[rk] || '', desc = dk ? r.v[dk] || '' : '';
+        if (par) { const m = ref.match(/^(.*?)\s*\(([^()]+)\)\s*$/); if (m) { ref = m[2]; if (!dk) desc = m[1]; } else if (!/^[A-Za-z0-9-]{5,12}$/.test(ref)) return; }
+        rows.push([mk ? r.v[mk] || '' : '', tk ? r.v[tk] || ft : ft, ref, desc]);
+      });
+      const r = importRows(rows, f.elements.create.checked, { noModel: f.elements.gen.checked ? 'gen' : 'none', origin: f.elements.origin.checked });
+      const out = [`${r.nuevas} nuevas`, `${r.ampliadas} ya existían`];
+      if (r.origen) out.push(`${r.origen} asignadas por prefijo`);
+      if (r.modelos) out.push(`${r.modelos} modelos creados`);
+      if (r.omitidas) out.push(`${r.omitidas} omitidas`);
+      changed('Catálogo: ' + out.join(', '));
+      if (r.faltan.size) alert('Modelos que no existen (filas omitidas): ' + [...r.faltan].slice(0, 10).join(', ') + '. Marca «Crear los modelos que no existan» o créalos antes.');
     }
   });
 }

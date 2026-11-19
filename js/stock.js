@@ -4,7 +4,7 @@
 // Todo queda en este dispositivo (localStorage); nada se publica.
 
 import { esc, fmtRef, cleanRef, nrm, lsGet, lsSet, lsDel, cmp } from './util.js';
-import { partByRef, supersededBy, mo, M } from './store.js';
+import { st, partByRef, supersededBy, mo, M } from './store.js';
 
 const KEY = 'refcom_stock_v1';
 export const COLORS = { del: 'FFC00000', mod: 'FFFFC000', add: 'FF00B050' };
@@ -278,7 +278,7 @@ export function stockView() {
   const segs = [['all', 'Todas', d.rows.length + d.added.length], ['chg', 'Cambios', c.del + c.mod + c.add], ['del', 'Eliminar', c.del], ['mod', 'Cantidad', c.mod], ['add', 'Añadir', c.add]];
   let h = `<div class="sk-h"><div><b>${esc(d.name)}</b><div class="mut small">${esc(d.stockroom)} · importado ${new Date(d.at).toLocaleDateString('es-ES')}</div></div>
     <div class="sk-c"><span class="sk-b del">${c.del}</span><span class="sk-b mod">${c.mod}</span><span class="sk-b add">${c.add}</span></div></div>
-  <div class="acts"><button type="button" class="btn pri" data-sk="export" ${c.del + c.mod + c.add ? '' : 'disabled'}>Generar Excel</button><button type="button" class="sm ghost" data-sk="toinv">Añadir todo a «Tengo»</button><button type="button" class="sm ghost" data-sk="import">Importar otro</button><button type="button" class="sm ghost bad" data-sk="clear">Quitar archivo</button></div>
+  <div class="acts"><button type="button" class="btn pri" data-sk="export" ${c.del + c.mod + c.add ? '' : 'disabled'}>Generar Excel</button><button type="button" class="sm ghost" data-sk="toinv">Añadir todo a «Tengo»</button><button type="button" class="sm ghost" data-sk="import">Importar otro</button>${st.editing ? '<button type="button" class="sm ghost" data-sk="tocat">Añadir al catálogo</button>' : ''}<button type="button" class="sm ghost bad" data-sk="clear">Quitar archivo</button></div>
   <form class="invadd wrapf" data-form="skadd" autocomplete="off"><input name="ref" list="dlRefs" placeholder="Añadir referencia" aria-label="Referencia a añadir" required autocapitalize="characters"><input name="qty" type="number" min="1" value="1" inputmode="numeric" aria-label="Cantidad"><button class="pri">Añadir</button><input name="desc" placeholder="Descripción (opcional)" aria-label="Descripción" class="full"></form>
   <div class="seg scroll" role="group" aria-label="Filtro">${segs.map(([k, l, n]) => `<button type="button" class="${SF.f === k ? 'on' : ''}" data-skf="${k}">${l} <small>${n}</small></button>`).join('')}</div>
   <input type="search" class="tf sk-q" placeholder="Filtrar por referencia o descripción" aria-label="Filtrar" value="${esc(SF.q)}">`;

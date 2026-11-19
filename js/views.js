@@ -112,6 +112,7 @@ export function homeView(cat) {
   const free = D.models.filter(m => !serieOf(m.id));
   if (free.length && !cat) h += `<section class="blk"><h2 class="h">Modelos sin serie</h2><div class="list">${free.map(modelRow).join('')}</div></section>`;
   const gen = D.parts.filter(p => p.gen).length, un = D.parts.filter(p => !p.gen && !mo(p).size).length;
+  h += `<p class="small"><a href="#/ayuda">Cómo se usa</a></p>`;
   if (gen || un) h += `<section class="blk"><div class="list">${gen ? `<a class="row" href="#/gen"><b>Generales y consumibles</b><span class="n">${gen}</span></a>` : ''}${un && ed() ? `<a class="row" href="#/un"><b>Sin asignar</b><span class="n">${un}</span></a>` : ''}</div></section>`;
   return h;
 }
@@ -228,17 +229,22 @@ export function genView(kind) {
 
 function chip(p) { return `<span class="chip ${chOf(p.type) ? 'ch-' + chOf(p.type) : ''}"><i>${esc(p.type)}</i>${refBtn(p.ref)}</span>`; }
 
-function overviewSerie(s, ms, collapsible = true) {
-  const parts = st.D.parts.filter(p => !p.gen && pass(p) && ms.some(m => mo(p).has(m.id)));
+/** Cuerpo de una serie en la vista general (también se pinta bajo demanda al desplegar). */
+export function overviewBody(s, ms) {
+  const parts = [...new Set(ms.flatMap(m => partsOf(m.id)))].filter(p => !p.gen && pass(p));
   const com = s ? parts.filter(p => isCommon(p, s)) : [];
   const cs = new Set(com.map(p => p.id));
   const rows = ms.map(m => {
     const l = parts.filter(p => mo(p).has(m.id) && !cs.has(p.id)).sort(byTypeRef);
     return `<div class="ovm" style="--fr:${franjaColor(m.franja)}"><a class="ovh" href="${linkM(m)}"><b>${esc(m.name)}</b>${codes(m)}${frTag(m.franja)}</a><div class="wrap">${l.map(chip).join('') || '<span class="mut">Sin referencias</span>'}</div></div>`;
   }).join('');
-  const body = `${com.length ? `<div class="ovcom"><span class="lbl">Común a la serie</span><div class="wrap">${com.sort(byTypeRef).map(chip).join('')}</div></div>` : ''}${rows || '<div class="ovm mut">Sin modelos</div>'}`;
-  if (!collapsible) return `<div class="ovs">${body}</div>`;
-  return `<details class="ovs" open style="--c:${s ? color(s.name) : 'var(--bd)'}"><summary><b>${s ? esc(s.name) : 'Modelos sin serie'}</b><small>${ms.length} modelos</small>${s ? `<a href="${linkS(s)}" class="mut">Abrir</a>` : ''}</summary>${body}</details>`;
+  return `${com.length ? `<div class="ovcom"><span class="lbl">Común a la serie</span><div class="wrap">${com.sort(byTypeRef).map(chip).join('')}</div></div>` : ''}${rows || '<div class="ovm mut">Sin modelos</div>'}`;
+}
+function overviewSerie(s, ms, collapsible = true, open = true) {
+  if (!collapsible) return `<div class="ovs">${overviewBody(s, ms)}</div>`;
+  // Con muchos modelos las series se pintan plegadas y su contenido se genera al desplegarlas
+  const body = open ? overviewBody(s, ms) : '';
+  return `<details class="ovs" ${open ? 'open' : `data-lazy="${s ? esc(s.id) : '-'}"`} style="--c:${s ? color(s.name) : 'var(--bd)'}"><summary><b>${s ? esc(s.name) : 'Modelos sin serie'}</b><small>${ms.length} modelos</small>${s ? `<a href="${linkS(s)}" class="mut">Abrir</a>` : ''}</summary>${body}</details>`;
 }
 
 export function overviewView(cat) {
@@ -248,9 +254,12 @@ export function overviewView(cat) {
   h += filtersHTML();
   const series = st.D.series.filter(s => (!cat || s.category === cat) && mineFilter(s)).sort((a, b) => cmp(a.name, b.name));
   h = h.replace('<!--mine-->', mineBar());
-  h += series.map(s => overviewSerie(s, modelsOfSerie(s))).join('');
   const free = st.D.models.filter(m => !serieOf(m.id));
-  if (free.length && !cat) h += overviewSerie(null, free);
+  const nModels = series.reduce((n, s) => n + s.models.length, 0) + (cat ? 0 : free.length);
+  const open = nModels <= 40 || series.length <= 1;
+  if (!open) h += '<p class="mut small">Hay muchos modelos: despliega cada serie para ver sus referencias.</p>';
+  h += series.map(s => overviewSerie(s, modelsOfSerie(s), true, open)).join('');
+  if (free.length && !cat) h += overviewSerie(null, free, true, open);
   return h + (series.length || free.length ? '' : empty('Sin datos.'));
 }
 
@@ -397,4 +406,22 @@ export function techView(x) {
     ${parts ? `<section class="blk"><h2 class="h">Piezas relacionadas</h2><div class="plist">${parts}</div></section>` : ''}
     ${x.note ? `<section class="blk"><h2 class="h">Notas</h2><div class="pc note">${esc(x.note).replace(/\n/g, '<br>')}</div></section>` : ''}
     ${ms.length && x.t.length ? '' : ''}`;
+}
+
+/* ---------- AYUDA ---------- */
+
+export function helpView() {
+  const tip = (t, d) => `<div class="pc"><b>${t}</b><div class="pc-d">${d}</div></div>`;
+  return `<header class="ph"><div class="crumb"><a href="#/">Series</a></div><h1>Cómo se usa</h1><div class="meta">Guía rápida para el técnico.</div></header>
+  <div class="parts">
+    ${tip('Buscar', 'Escribe una referencia, un modelo, un código (D0DY) o un SC. No importan mayúsculas, espacios ni guiones. Una referencia antigua te lleva a la que la sustituye.')}
+    ${tip('Copiar una referencia', 'Toca la referencia: queda copiada para pegarla en el pedido.')}
+    ${tip('Pedir', '«+ Pedir» la añade a tu lista. En Inventario → Pedir, «Compartir lista» la envía por Teams o correo con referencia, descripción y cantidad.')}
+    ${tip('Mis series', 'En Series, «Elegir mis series» muestra solo las que atiendes.')}
+    ${tip('Técnico', 'Códigos SC con causas, solución y piezas; y consultas como el acceso a modo SP. Cada modelo muestra al final los suyos.')}
+    ${tip('Excel', 'Abre un Excel compartido y míralo en tarjetas: búsqueda, filtros, teléfonos y «Cómo llegar». No se sube a ningún sitio.')}
+    ${tip('Stock rule', 'Inventario → Stock rule: marca lo que quitar, cambiar o añadir y genera el Excel con los colores para el jefe de equipo.')}
+    ${tip('Sin cobertura', 'La web funciona sin conexión con la última versión cargada. Instálala como app desde el menú del navegador («Añadir a pantalla de inicio»).')}
+    ${tip('Algo falta o está mal', '«Avisar de un error» en el modelo o la referencia envía el aviso al responsable con el enlace.')}
+  </div>`;
 }
