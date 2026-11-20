@@ -231,11 +231,12 @@ export const setOnChange = fn => { onChange = fn; };
  * (cupo de unos 5 MiB compartido). Las escrituras van en cola: la última refleja siempre el estado actual.
  */
 const DRAFT_DELAY = 400;
-let draftTimer = null, draftQueue = Promise.resolve();
+let draftTimer = null, draftQueue = Promise.resolve(), draftBusy = 0;
+const draftVal = () => (st.dirty ? { repo: st.repo, base: st.baseSha, at: Date.now(), data: st.snap } : null);
 
 function draftLS(val) {
   try {
-    if (val) localStorage.setItem(K.draft, `{"repo":${JSON.stringify(val.repo)},"base":${JSON.stringify(val.base)},"data":${val.data}}`);
+    if (val) localStorage.setItem(K.draft, `{"repo":${JSON.stringify(val.repo)},"base":${JSON.stringify(val.base)},"at":${val.at || 0},"data":${val.data}}`);
     else localStorage.removeItem(K.draft);
     return true;
   } catch { return false; }
@@ -245,7 +246,8 @@ function draftLS(val) {
 export function flushDraft() {
   if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
   if (!st.editing) return draftQueue;
-  const val = st.dirty ? { repo: st.repo, base: st.baseSha, data: st.snap } : null;
+  const val = draftVal();
+  draftBusy++;
   draftQueue = draftQueue.then(async () => {
     let ok;
     try {
@@ -253,10 +255,23 @@ export function flushDraft() {
       lsDel(K.draft); // borrador de versiones anteriores, ya pasado a IndexedDB
       ok = true;
     } catch { ok = draftLS(val); }
+    draftBusy--;
     const err = !ok && !!val;
     if (err !== !!st.saveErr) { st.saveErr = err; onChange(); }
   });
   return draftQueue;
+}
+
+/**
+ * Al cerrar o recargar la página: IndexedDB es asíncrona y el navegador puede cortar la escritura,
+ * así que, si hay algo sin escribir, se deja además una copia síncrona en localStorage (si cabe).
+ * readDraft se queda con la más reciente.
+ */
+export function flushDraftNow() {
+  if (!st.editing || !(draftTimer || draftBusy)) return;
+  const val = draftVal();
+  flushDraft();
+  draftLS(val);
 }
 
 export function persist() {
@@ -270,13 +285,16 @@ export function persist() {
 /** Borrador guardado: IndexedDB y, si no hay, los de versiones anteriores en localStorage. */
 export async function readDraft() {
   await draftQueue;
+  let idb = null, ls = null;
   try {
     const d = await idbGet(K.draft);
-    if (d && typeof d.data === 'string') return { ...d, data: JSON.parse(d.data) };
+    if (d && typeof d.data === 'string') idb = { ...d, data: JSON.parse(d.data) };
   } catch { /* sin IndexedDB */ }
+  try { ls = JSON.parse(localStorage.getItem(K.draft)); } catch { /* */ }
+  // la copia de localStorage es la de emergencia (cierre de página) o la de versiones anteriores
+  if (idb && ls) return (ls.at || 0) > (idb.at || 0) ? ls : idb;
+  if (idb || ls) return idb || ls;
   try {
-    const d = JSON.parse(localStorage.getItem(K.draft));
-    if (d) return d;
     const o = JSON.parse(localStorage.getItem(K.oldDraft)); // borrador de la versión 5
     if (o) { lsDel(K.oldDraft); return o; }
   } catch { /* */ }
