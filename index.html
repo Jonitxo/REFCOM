@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#1f6feb">
+<meta name="theme-color" content="#00739a" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15212a" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <title>Referencias por modelo</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
@@ -16,7 +18,7 @@
 <a class="skip" href="#main">Saltar al contenido</a>
 <header class="top">
   <div class="tb">
-    <a class="brand" href="#/">Referencias</a>
+    <a class="brand" href="#/"><svg aria-hidden="true" viewBox="0 0 22 22"><rect x="1" y="1" width="9" height="9" rx="2" fill="#00a0d2"/><rect x="12" y="1" width="9" height="9" rx="2" fill="#d6247e"/><rect x="1" y="12" width="9" height="9" rx="2" fill="#f2b705"/><rect x="12" y="12" width="9" height="9" rx="2" fill="currentColor"/></svg>Referencias</a>
     <span id="offline" class="pill warn" role="status" hidden>Sin conexión</span>
     <span id="dirty" class="pill warn" role="status" hidden>Sin publicar</span>
     <button id="btnAcc" type="button" class="sm">Acceso</button>
@@ -31,12 +33,12 @@
 <main id="main" tabindex="-1"><div class="empty"><p>Cargando…</p></div></main>
 
 <nav id="nav" aria-label="Secciones">
-  <a href="#/" data-nav="home"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg><span>Series</span></a>
-  <a href="#/general" data-nav="ov"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>General</span></a>
-  <a href="#/tec/sc" data-nav="tec"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg><span>Técnico</span></a>
-  <a href="#/toner" data-nav="toner"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="10" rx="2"/><path d="M7 8V5h10v3M7 18v2h10v-2"/><circle cx="17" cy="13" r="1"/></svg><span>Tóner</span></a>
-  <a href="#/excel" data-nav="xls"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/></svg><span>Excel</span></a>
-  <a href="#/inv/pedir" data-nav="inv"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></svg><span>Inventario</span><b id="invN" class="cnt" hidden></b></a>
+  <a href="#/" data-nav="home"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 3 7.5 12 12l9-4.5z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg><span>Series</span></a>
+  <a href="#/general" data-nav="ov"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg><span>General</span></a>
+  <a href="#/tec/sc" data-nav="tec"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.5 17.3a2.1 2.1 0 0 0 3 3l5.8-5.8a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg><span>Técnico</span></a>
+  <a href="#/toner" data-nav="toner"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="2.5" y="8" width="17" height="8" rx="4"/><path d="M19.5 12h2M7 8v8M11 8v8"/></svg><span>Tóner</span></a>
+  <a href="#/agenda" data-nav="cal"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M12 14h2M8 17h2"/></svg><span>Agenda</span></a>
+  <a href="#/inv/pedir" data-nav="inv"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8M3 13.5h18M11 12.5v2.5h2v-2.5"/></svg><span>Inventario</span><b id="invN" class="cnt" hidden></b></a>
 </nav>
 
 <dialog id="dlg"></dialog>

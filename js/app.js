@@ -8,6 +8,7 @@ import * as X from './xls.js';
 import * as TN from './toner.js';
 import { loadPending } from './img.js';
 import { pdfView, bindPdf } from './pdfcat.js';
+import { calView, bindCal } from './cal.js';
 import { cleanForm, cleanBulkForm, bulkPhotosForm, sheetToCatalogForm, openDialog, setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
 import { importStock, exportStock, stockClear, stockGet, stockToggleDel, stockQty, stockReset, stockAdd, stockFinal, SF } from './stock.js';
 import { invAdd, invQty, invRemove, invUso, invMove, invMoveOne, invClear, invCount, invExport, invImport, invGet } from './inv.js';
@@ -33,7 +34,7 @@ function parse(hash) {
   const [, a = '', ...rest] = h.split('/');
   let id = rest.join('/');
   try { id = decodeURIComponent(id); } catch { /* enlace mal formado (p. ej. «100%»): se usa tal cual */ }
-  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls', ayuda: 'help', toner: 'toner', limpieza: 'clean', catalogo: 'pdf' };
+  const map = { '': 'home', s: 's', m: 'm', r: 'r', buscar: 'q', general: 'ov', inv: 'inv', gen: 'gen', un: 'un', rev: 'rev', tec: 'tec', t: 't', excel: 'xls', ayuda: 'help', toner: 'toner', limpieza: 'clean', catalogo: 'pdf', agenda: 'cal' };
   return { v: map[a] || 'home', id };
 }
 
@@ -70,6 +71,7 @@ function render() {
     case 'gen': case 'un': html = V.genView(route.v); break;
     case 'rev': html = st.editing ? V.reviewView() : notFound(); title = 'Revisión'; break;
     case 'pdf': html = pdfView(); title = 'Catálogo PDF'; break;
+    case 'cal': html = calView(route.id); title = 'Agenda'; break;
     default: html = V.homeView(cat);
   }
   if (route.v !== 'q') lastNonSearch = location.hash || '#/';
@@ -93,7 +95,7 @@ function renderChrome() {
   $('#dirty').textContent = st.saveErr ? 'Sin publicar · borrador NO guardado' : 'Sin publicar';
   $('#btnAcc').textContent = st.editing ? 'Editar' : 'Acceso';
   $('#btnAcc').classList.toggle('pri', st.editing);
-  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec', xls: 'xls', toner: 'toner', clean: 'home' }[route.v] || '';
+  const act = { home: 'home', s: 'home', m: 'home', r: 'home', ov: 'ov', inv: 'inv', tec: 'tec', t: 'tec', xls: 'home', pdf: 'home', toner: 'toner', clean: 'home', cal: 'cal' }[route.v] || '';
   $$('#nav [data-nav]').forEach(a => { const on = a.dataset.nav === act; a.classList.toggle('on', on); on ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
   const n = invCount('pedir');
   $('#invN').textContent = n || ''; $('#invN').hidden = !n;
@@ -414,6 +416,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
 
 setRefresh(() => keepScroll(render));
 bindPdf(render);
+bindCal(() => keepScroll(render));
 setOnChange(renderChrome);
 
 (async function boot() {

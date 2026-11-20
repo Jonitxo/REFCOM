@@ -118,7 +118,7 @@ export function homeView(cat) {
   if (free.length && !cat) h += `<section class="blk"><h2 class="h">Modelos sin serie</h2><div class="list">${free.map(modelRow).join('')}</div></section>`;
   const gen = D.parts.filter(p => p.gen).length, un = D.parts.filter(p => !p.gen && !p.cl && !mo(p).size).length, cln = D.parts.filter(p => p.cl).length;
   h += `<p class="small"><a href="#/ayuda">Cómo se usa</a></p>`;
-  if (gen || un || cln || ed()) h += `<section class="blk"><div class="list"><a class="row" href="#/limpieza"><b>Productos de limpieza</b><span class="n">${cln}</span></a>${gen ? `<a class="row" href="#/gen"><b>Generales y consumibles</b><span class="n">${gen}</span></a>` : ''}${un && ed() ? `<a class="row" href="#/un"><b>Sin asignar</b><span class="n">${un}</span></a>` : ''}</div></section>`;
+  h += `<section class="blk"><div class="list"><a class="row" href="#/limpieza"><b>Productos de limpieza</b><span class="n">${cln}</span></a><a class="row" href="#/excel"><b>Abrir un Excel</b><span class="mut small">listados, stock rule, tóner…</span></a>${gen ? `<a class="row" href="#/gen"><b>Generales y consumibles</b><span class="n">${gen}</span></a>` : ''}${un && ed() ? `<a class="row" href="#/un"><b>Sin asignar</b><span class="n">${un}</span></a>` : ''}</div></section>`;
   return h;
 }
 
