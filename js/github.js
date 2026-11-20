@@ -1,6 +1,6 @@
 // Carga de datos publicados, sesión de editor con token de GitHub y publicación de data.json.
 
-import { st, K, VERSION, migrate, emptyData, resetUndo, persist, readDraft } from './store.js';
+import { st, K, VERSION, migrate, emptyData, resetUndo, persist, readDraft, flushDraft } from './store.js';
 import { lsDel } from './util.js';
 import { allPending, delPending, imgName } from './img.js';
 
@@ -8,7 +8,7 @@ const API = 'https://api.github.com';
 
 export async function loadPublished() {
   try {
-    const r = await fetch('data.json', { cache: 'no-store' });
+    const r = await fetch('data.json', { cache: 'no-cache' });
     if (!r.ok) throw 0;
     const t = await r.text(), d = migrate(JSON.parse(t));
     if (!d) throw 0;
@@ -20,7 +20,7 @@ export async function loadPublished() {
 export async function pollData() {
   if (st.editing || document.hidden || !/^https?:/.test(location.protocol)) return false;
   try {
-    const r = await fetch('data.json', { cache: 'no-store' });
+    const r = await fetch('data.json', { cache: 'no-cache' });
     if (!r.ok) return false;
     const t = await r.text();
     if (t === st.lastText) return false;
@@ -93,7 +93,7 @@ export async function login(repo, token, remember, silent) {
     const rem = await remote();
     const base = rem.data || emptyData();
     st.pubStr = JSON.stringify(base);
-    const dr = readDraft(), drData = dr && dr.repo === st.repo ? migrate(dr.data) : null;
+    const dr = await readDraft(), drData = dr && dr.repo === st.repo ? migrate(dr.data) : null;
     const keep = drData && (dr.base === st.baseSha || silent ||
       !confirm('Hay un borrador local basado en una versión anterior de los datos publicados.\n\nAceptar: descartarlo y usar la versión publicada.\nCancelar: conservar el borrador (al publicar se detectará el conflicto).'));
     st.D = keep ? drData : base;
@@ -111,16 +111,17 @@ export async function login(repo, token, remember, silent) {
 }
 
 /** Edición sin GitHub (localhost): publicar descarga data.json. */
-export function enterLocal() {
+export async function enterLocal() {
   st.pubStr = JSON.stringify(st.D);
-  const dr = readDraft(), d = dr && dr.repo === '' ? migrate(dr.data) : null;
+  const dr = await readDraft(), d = dr && dr.repo === '' ? migrate(dr.data) : null;
   if (d) st.D = d;
   st.editing = true; st.mode = 'local'; st.repo = ''; st.baseSha = null;
   resetUndo(); persist();
 }
 
 export async function logout() {
-  st.editing = false; st.mode = ''; st.token = ''; st.dirty = false; st.undo = []; st.snap = null;
+  await flushDraft(); // el borrador se conserva en el dispositivo
+  st.editing = false; st.mode = ''; st.token = ''; st.dirty = false; st.undo = []; st.undoSize = 0; st.snap = null; st.idx = null;
   clearToken();
   await loadPublished();
 }
@@ -220,7 +221,7 @@ export async function publish(message) {
     if (r === 'conflict') return 'conflict';
     st.baseSha = r.sha;
     try { await delPending([...ph.up.map(x => x.name), ...ph.orphan]); } catch { /* */ }
-    st.pubStr = JSON.stringify(st.D); st.snap = st.pubStr; st.undo = []; persist();
+    resetUndo(); st.pubStr = st.snap; persist();
     return 'ok';
   }
   const body = { message: message || 'Actualización de referencias', content: b64(JSON.stringify(st.D, null, 1)) };
@@ -234,7 +235,7 @@ export async function publish(message) {
   const j = await r.json();
   st.baseSha = j.content && j.content.sha;
   if (ph.orphan.length) { try { await delPending(ph.orphan); } catch { /* */ } }
-  st.pubStr = JSON.stringify(st.D); st.snap = st.pubStr; st.undo = []; persist();
+  resetUndo(); st.pubStr = st.snap; persist();
   return 'ok';
 }
 
