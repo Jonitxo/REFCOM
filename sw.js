@@ -1,6 +1,7 @@
 // Service worker: la red primero (siempre la versión más reciente, revalidada) y la caché como respaldo sin conexión.
-const V = 'refcom-v10';
-const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/util.js', 'js/store.js', 'js/github.js', 'js/views.js', 'js/forms.js', 'js/inv.js', 'js/stock.js', 'js/xls.js', 'js/toner.js', 'js/img.js', 'js/idb.js', 'js/vendor/jszip.min.js',
+const V = 'refcom-v12';
+const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/util.js', 'js/store.js', 'js/github.js', 'js/views.js', 'js/forms.js', 'js/inv.js', 'js/stock.js', 'js/xls.js', 'js/toner.js', 'js/img.js', 'js/idb.js', 'js/catalog.js', 'js/pdfcat.js', 'js/cal.js', 'js/pdfw.js', 'js/vendor/jszip.min.js',
+  'fonts/barlow-latin-400-normal.woff2', 'fonts/barlow-latin-500-normal.woff2', 'fonts/barlow-latin-600-normal.woff2', 'fonts/barlow-latin-700-normal.woff2', 'fonts/jetbrains-mono-latin-500-normal.woff2', 'fonts/jetbrains-mono-latin-700-normal.woff2',
   'data.json', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V && x !== 'refcom-img' && x !== 'refcom-share').map(x => caches.delete(x)))).then(() => self.clients.claim())); });
