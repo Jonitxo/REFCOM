@@ -422,7 +422,7 @@ export function loginForm() {
     <label class="sw"><input type="checkbox" name="rem"><span>Recordar en este dispositivo</span></label>`, {
     label: 'Entrar',
     extra: localOK() ? '<button type="button" class="ghost" data-local>Modo local</button>' : '',
-    mount(f) { $('[data-local]', f)?.addEventListener('click', () => { enterLocal(); close(); refresh(); toast('Modo local: «Publicar» descarga data.json'); }); },
+    mount(f) { $('[data-local]', f)?.addEventListener('click', async () => { await enterLocal(); close(); refresh(); toast('Modo local: «Publicar» descarga data.json'); }); },
     async submit(f) {
       const r = await login(val(f, 'repo'), val(f, 'tok'), f.elements.rem.checked, false);
       refresh(); toast(r === 'stale' ? 'Borrador recuperado. Hay una versión publicada más reciente: al publicar se avisará del conflicto.' : r === 'draft' ? 'Borrador recuperado' : 'Sesión de editor iniciada');
