@@ -37,6 +37,17 @@ export const lsGet = (k, def) => { try { const v = JSON.parse(localStorage.getIt
 /** Guarda en localStorage; devuelve false si no hay espacio o está bloqueado. */
 export const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
 export const lsDel = k => { try { localStorage.removeItem(k); } catch { /* */ } };
+/**
+ * Pide al navegador almacenamiento persistente (no se borra solo cuando falta espacio) la primera vez que
+ * hay algo que solo vive en este dispositivo: borrador, inventario, stock rule. Si el navegador lo deniega,
+ * todo sigue funcionando igual. Una vez por sesión.
+ */
+let persistAsked = false;
+export function askPersist() {
+  if (persistAsked || typeof navigator === 'undefined' || !navigator.storage?.persist) return;
+  persistAsked = true;
+  navigator.storage.persisted().then(p => p || navigator.storage.persist()).catch(() => {});
+}
 
 const hue = s => { let h = 0; for (const c of String(s).toLowerCase()) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 export const color = s => `hsl(${hue(s)} 55% 42%)`;

@@ -3,7 +3,7 @@
 // mismo formato. Se edita el XML del propio archivo para conservar estilos, anchos y columnas.
 // Todo queda en este dispositivo (localStorage); nada se publica.
 
-import { esc, fmtRef, cleanRef, nrm, lsGet, lsSet, lsDel, cmp, colNum, colName, siText, walkCells } from './util.js';
+import { esc, fmtRef, cleanRef, nrm, lsGet, lsSet, lsDel, askPersist, cmp, colNum, colName, siText, walkCells } from './util.js';
 import { st, partByRef, supersededBy, mo, M } from './store.js';
 
 const KEY = 'refcom_stock_v1';
@@ -144,12 +144,13 @@ export async function importStock(file) {
     out.push({ r: rowNum.get(row), ref, desc, qty, state, orig: state, newQty: nq ?? qty, nq0: nq ?? qty, note0: note });
   });
   const data = { name: file.name, b64: b64of(buf), sheetPath, noteCol, cols: hdr, stockroom, rows: out, added: [], at: new Date().toISOString() };
+  askPersist();
   if (!lsSet(KEY, data)) throw new Error('No hay espacio en el navegador para guardar el archivo. Borra los Excel recientes del visor y vuelve a intentarlo.');
   return data;
 }
 
 export const stockGet = () => lsGet(KEY, null);
-const put = d => { if (!lsSet(KEY, d)) alert('No se pudo guardar el cambio: el almacenamiento del navegador está lleno.'); };
+const put = d => { askPersist(); if (!lsSet(KEY, d)) alert('No se pudo guardar el cambio: el almacenamiento del navegador está lleno.'); };
 const origOf = it => it.orig || (it.state === 'add0' ? 'add0' : 'keep');
 /** Estado cuando no se elimina: cantidad cambiada → amarillo; si no, el estado con el que se importó. */
 const restState = it => (it.newQty !== it.qty ? 'mod' : origOf(it) === 'del' ? 'keep' : origOf(it));

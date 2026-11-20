@@ -1,7 +1,7 @@
 // Arranque, rutas (#/…), pintado y eventos globales.
 
 import { $, $$, esc, lsGet, lsSet, copyText, toast, download, nrm, cmp } from './util.js';
-import { st, K, ix, reindex, setOnChange, M, SR, P, TECH, modelByName, serieByName, partByRef, supersededBy, modelsOfSerie, undo } from './store.js';
+import { st, K, ix, reindex, setOnChange, M, SR, P, TECH, modelByName, serieByName, partByRef, supersededBy, modelsOfSerie, undo, flushDraft } from './store.js';
 import { loadPublished, pollData, login, savedToken, savedRepo, clearToken } from './github.js';
 import * as V from './views.js';
 import * as X from './xls.js';
@@ -394,6 +394,9 @@ document.addEventListener('keydown', e => {
   }
 });
 window.addEventListener('beforeunload', e => { if (st.editing && st.dirty) { e.preventDefault(); e.returnValue = ''; } });
+// el borrador se escribe con un retardo corto: al salir o pasar a segundo plano se escribe ya
+window.addEventListener('pagehide', () => { flushDraft(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushDraft(); });
 
 /* ---------- conexión y datos nuevos ---------- */
 

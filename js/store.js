@@ -12,7 +12,8 @@
 //   config: {contacto}  correo al que el equipo envía avisos de faltas o errores.
 // Una pieza asignada a una serie ({k:'s'}) aplica a todos sus modelos, incluidos los futuros.
 
-import { uid, nrm, cmp, refPrefix, lsDel, cleanRef } from './util.js';
+import { uid, nrm, cmp, refPrefix, lsDel, cleanRef, askPersist } from './util.js';
+import { idbGet, idbSet, idbDel } from './idb.js';
 import { sanitizeToner } from './toner.js';
 
 export const VERSION = 7;
@@ -127,7 +128,7 @@ export const st = {
   D: emptyData(),
   editing: false, mode: '', dirty: false,
   repo: '', token: '', baseSha: null, pubStr: '', lastText: '', loadErr: false,
-  snap: null, undo: []
+  snap: null, idx: null, undo: [], undoSize: 0, saveErr: false
 };
 
 /* ---------- índices ---------- */
@@ -224,36 +225,138 @@ export function newModel(f) {
 let onChange = () => {};
 export const setOnChange = fn => { onChange = fn; };
 
+/*
+ * Borrador: se guarda en IndexedDB (cupo de una fracción del disco) con un retardo corto, para no
+ * reescribir todo el catálogo en cada cambio. Si IndexedDB no está disponible, se intenta localStorage
+ * (cupo de unos 5 MiB compartido). Las escrituras van en cola: la última refleja siempre el estado actual.
+ */
+const DRAFT_DELAY = 400;
+let draftTimer = null, draftQueue = Promise.resolve();
+
+function draftLS(val) {
+  try {
+    if (val) localStorage.setItem(K.draft, `{"repo":${JSON.stringify(val.repo)},"base":${JSON.stringify(val.base)},"data":${val.data}}`);
+    else localStorage.removeItem(K.draft);
+    return true;
+  } catch { return false; }
+}
+
+/** Escribe el borrador ya (sin esperar al retardo). Devuelve la promesa de la escritura. */
+export function flushDraft() {
+  if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
+  if (!st.editing) return draftQueue;
+  const val = st.dirty ? { repo: st.repo, base: st.baseSha, data: st.snap } : null;
+  draftQueue = draftQueue.then(async () => {
+    let ok;
+    try {
+      if (val) await idbSet(K.draft, val); else await idbDel(K.draft);
+      lsDel(K.draft); // borrador de versiones anteriores, ya pasado a IndexedDB
+      ok = true;
+    } catch { ok = draftLS(val); }
+    const err = !ok && !!val;
+    if (err !== !!st.saveErr) { st.saveErr = err; onChange(); }
+  });
+  return draftQueue;
+}
+
 export function persist() {
   st.dirty = st.snap !== st.pubStr;
-  st.saveErr = false;
-  try {
-    if (st.dirty) localStorage.setItem(K.draft, `{"repo":${JSON.stringify(st.repo)},"base":${JSON.stringify(st.baseSha)},"data":${st.snap}}`);
-    else localStorage.removeItem(K.draft);
-  } catch { st.saveErr = st.dirty; /* sin espacio: el borrador solo vive en memoria */ }
+  if (st.dirty) askPersist();
+  if (draftTimer) clearTimeout(draftTimer);
+  draftTimer = setTimeout(flushDraft, DRAFT_DELAY);
   onChange();
 }
-export function resetUndo() { st.snap = JSON.stringify(st.D); st.undo = []; }
-/** Registrar un cambio del editor: guarda borrador y apila para deshacer. */
-export function save() {
-  if (!st.editing) return;
-  const cur = JSON.stringify(st.D);
-  if (cur === st.snap) return;
-  if (st.snap !== null) { st.undo.push(st.snap); if (st.undo.length > 40) st.undo.shift(); }
-  st.snap = cur; persist();
-}
-export function undo() {
-  if (!st.editing || !st.undo.length) return false;
-  const prev = st.undo.pop();
-  st.D = migrate(JSON.parse(prev)); st.snap = prev; persist();
-  return true;
-}
-export function readDraft() {
+
+/** Borrador guardado: IndexedDB y, si no hay, los de versiones anteriores en localStorage. */
+export async function readDraft() {
+  await draftQueue;
+  try {
+    const d = await idbGet(K.draft);
+    if (d && typeof d.data === 'string') return { ...d, data: JSON.parse(d.data) };
+  } catch { /* sin IndexedDB */ }
   try {
     const d = JSON.parse(localStorage.getItem(K.draft));
     if (d) return d;
-    const o = JSON.parse(localStorage.getItem(K.oldDraft)); // borrador de la versión anterior
+    const o = JSON.parse(localStorage.getItem(K.oldDraft)); // borrador de la versión 5
     if (o) { lsDel(K.oldDraft); return o; }
   } catch { /* */ }
   return null;
+}
+
+/*
+ * Deshacer por diferencias: cada paso guarda solo las entidades (piezas, modelos, series…) que cambiaron,
+ * con su estado anterior, en vez de una copia completa de los datos. Las colecciones sin id (tipos,
+ * tóner, configuración) se guardan enteras si cambian. Límite: 40 pasos y UNDO_CHARS caracteres en total.
+ */
+const UNDO_MAX = 40, UNDO_CHARS = 8e6;
+
+const isEnt = v => Array.isArray(v) && v.every(x => x && typeof x === 'object' && !Array.isArray(x) && typeof x.id === 'string')
+  && new Set(v.map(x => x.id)).size === v.length;
+
+/** Índice de los datos: por clave, la cadena JSON o, para colecciones con id, {ids, map: id → JSON}. */
+export function snapIndex(D) {
+  const idx = new Map();
+  for (const k of Object.keys(D)) {
+    const v = D[k];
+    if (v === undefined || typeof v === 'function') continue;
+    idx.set(k, isEnt(v) ? { ids: v.map(x => x.id), map: new Map(v.map(x => [x.id, JSON.stringify(x)])) } : JSON.stringify(v));
+  }
+  return idx;
+}
+/** JSON compacto a partir del índice: idéntico a JSON.stringify(D). */
+export const buildSnap = idx => '{' + [...idx].map(([k, v]) =>
+  JSON.stringify(k) + ':' + (typeof v === 'string' ? v : '[' + v.ids.map(i => v.map.get(i)).join(',') + ']')).join(',') + '}';
+
+const sizeOf = v => v === undefined ? 0 : typeof v === 'string' ? v.length : [...v.map.values()].reduce((n, s) => n + s.length, 0);
+
+/** Paso de deshacer: lo necesario para volver de `nw` a `old`. */
+function diffSnap(old, nw) {
+  const e = [];
+  let size = 0;
+  for (const k of new Set([...old.keys(), ...nw.keys()])) {
+    const a = old.get(k), b = nw.get(k);
+    if (a === b) continue;
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const back = [];
+      for (const [id, s] of a.map) if (b.map.get(id) !== s) { back.push([id, s]); size += s.length; }
+      for (const id of b.map.keys()) if (!a.map.has(id)) back.push([id, null]);
+      const ord = a.ids.length === b.ids.length && a.ids.every((x, i) => x === b.ids[i]) ? null : a.ids;
+      if (back.length || ord) { e.push({ k, back, ord }); size += ord ? ord.length * 10 : 0; }
+    } else { e.push({ k, whole: true, v: a }); size += sizeOf(a); }
+  }
+  return { e, size };
+}
+
+function applyBack(cur, step) {
+  const idx = new Map(cur);
+  for (const x of step.e) {
+    if (x.whole) { if (x.v === undefined) idx.delete(x.k); else idx.set(x.k, x.v); continue; }
+    const c = idx.get(x.k), map = new Map(c.map);
+    x.back.forEach(([id, s]) => (s === null ? map.delete(id) : map.set(id, s)));
+    idx.set(x.k, { ids: x.ord || c.ids, map });
+  }
+  return idx;
+}
+
+export function resetUndo() { st.idx = snapIndex(st.D); st.snap = buildSnap(st.idx); st.undo = []; st.undoSize = 0; }
+
+/** Registrar un cambio del editor: guarda borrador y apila para deshacer. */
+export function save() {
+  if (!st.editing) return;
+  const idx = snapIndex(st.D), cur = buildSnap(idx);
+  if (cur === st.snap) return;
+  if (st.idx) {
+    const step = diffSnap(st.idx, idx);
+    st.undo.push(step); st.undoSize = (st.undoSize || 0) + step.size;
+    while (st.undo.length > 1 && (st.undo.length > UNDO_MAX || st.undoSize > UNDO_CHARS)) st.undoSize -= st.undo.shift().size;
+  }
+  st.idx = idx; st.snap = cur; persist();
+}
+export function undo() {
+  if (!st.editing || !st.undo.length || !st.idx) return false;
+  const step = st.undo.pop();
+  st.undoSize -= step.size;
+  st.D = migrate(JSON.parse(buildSnap(applyBack(st.idx, step))));
+  st.idx = snapIndex(st.D); st.snap = buildSnap(st.idx); persist();
+  return true;
 }

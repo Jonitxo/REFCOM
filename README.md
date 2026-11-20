@@ -29,6 +29,7 @@ Los datos de versiones anteriores (familia > serie > franja/grupo) se convierten
 | `js/inv.js` | Inventario personal (solo en el dispositivo). |
 | `js/toner.js` | Stock de seguridad de tóner: vista, edición, recuento, pedido y exportación a Excel. |
 | `js/img.js` | Compresión, recorte, nombres y cola de fotos pendientes (IndexedDB). |
+| `js/idb.js` | Almacén clave-valor en IndexedDB para el borrador del editor. |
 | `img/` | Fotos publicadas (se crea al publicar la primera). |
 | `js/xls.js` | Visor de Excel y vistas por cabeceras. |
 | `js/stock.js` | Importación, edición y exportación del stock rule (.xlsx). |
@@ -85,16 +86,16 @@ El token no se guarda en ningún servidor: solo en el navegador de quien lo intr
 - **General**: todos los modelos con sus referencias en una pantalla, por serie plegable.
 - **Serie**: vistas «Modelos», «Resumen» y «Matriz» (la matriz es para pantallas anchas). Exportar CSV.
 - **Mi inventario**: listas Tengo / Pedir / Devolver con cantidades. En «Tengo», uso habitual u ocasional. «Recibida» pasa una pieza de Pedir a Tengo. «Compartir lista» abre el menú de compartir del móvil (o copia el texto) para enviarlo por Teams. Se guarda solo en ese dispositivo: si se borran los datos del navegador se pierde, por eso existe «Exportar copia».
-- Favoritos, recientes, vista preferida e inventario se guardan en el navegador de cada dispositivo y no se sincronizan.
-- Instalable como app desde el navegador (HTTPS). Sin conexión muestra la última versión cargada. Los datos nuevos se cargan solos al volver a la app y cada 5 minutos.
+- Favoritos, recientes, vista preferida e inventario se guardan en el navegador de cada dispositivo y no se sincronizan. La primera vez que hay algo que solo vive en el dispositivo (inventario, stock rule, borrador), la web pide al navegador almacenamiento persistente para que no lo borre solo cuando falta espacio; el navegador puede concederlo o no, y «Exportar copia» sigue siendo la protección real.
+- Instalable como app desde el navegador (HTTPS). Sin conexión muestra la última versión cargada. Los datos nuevos se cargan solos al volver a la app y cada 5 minutos, con petición condicional: si `data.json` no ha cambiado, no se descarga de nuevo.
 
 ## Edición
 
 
 1. «Acceso» → `usuario/repositorio` y token. «Recordar en este dispositivo» conserva el token.
-2. Botón «Editar» (barra inferior en móvil, arriba en escritorio): + Pieza, + Varias, + Modelo, + Serie, Importar tabla, Tipos de pieza, Revisión, Exportar, Deshacer (también Ctrl+Z, 40 pasos).
+2. Botón «Editar» (barra inferior en móvil, arriba en escritorio): + Pieza, + Varias, + Modelo, + Serie, Importar tabla, Tipos de pieza, Revisión, Exportar, Deshacer (también Ctrl+Z, hasta 40 pasos; cada paso guarda solo lo que cambió).
 3. En cada serie y modelo aparecen «Editar», «+ Modelo» y «+ Pieza» con el destino ya marcado. Al editar una serie se ordena su lista de modelos.
-4. Los cambios quedan como borrador en el navegador («Sin publicar»). «Publicar» muestra el resumen y guarda `data.json` con un commit. GitHub Pages tarda un momento en reflejarlo.
+4. Los cambios quedan como borrador en el navegador («Sin publicar»), en IndexedDB, que no tiene el límite de unos 5 MB de localStorage (si IndexedDB no está disponible se usa localStorage). Se escribe medio segundo después del último cambio y al salir de la página o pasar a segundo plano. «Publicar» muestra el resumen y guarda `data.json` con un commit. GitHub Pages tarda un momento en reflejarlo.
 5. «Revisión» lista incidencias. Referencias duplicadas y tipos inexistentes bloquean la publicación.
 
 **Sustituciones**: en la pieza vigente, campo «Sustituye a» con las referencias anteriores separadas por coma.

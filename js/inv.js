@@ -4,7 +4,7 @@
 //   devolver: [{ref, qty}]
 
 import { K } from './store.js';
-import { lsGet, lsSet, cleanRef, nrm } from './util.js';
+import { lsGet, lsSet, cleanRef, nrm, askPersist } from './util.js';
 
 export const LISTS = { tengo: 'Tengo', pedir: 'Pedir', devolver: 'Devolver' };
 
@@ -17,7 +17,7 @@ export function invGet() {
   }
   return out;
 }
-const put = v => lsSet(K.inv, v);
+const put = v => { askPersist(); return lsSet(K.inv, v); };
 const find = (l, ref) => l.find(x => nrm(x.ref) === nrm(ref));
 
 export function invAdd(list, ref, qty = 1, uso = '') {
