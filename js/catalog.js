@@ -131,7 +131,7 @@ export function applicability(name) {
  */
 export function parseCatalog(pages) {
   buildVocab(pages);
-  const res = { title: '', version: '', models: [], units: {}, groups: {}, parts: new Map(), changes: [], pm: new Map(), refPages: new Map(), labels: new Map(), pageOfGroup: {}, warnings: [], pages: pages.length };
+  const res = { title: '', version: '', models: [], units: {}, groups: {}, parts: new Map(), changes: [], pm: new Map(), refPages: new Map(), refPos: new Map(), blocks: new Set(), labels: new Map(), pageOfGroup: {}, warnings: [], pages: pages.length };
   const part = ref => {
     if (!res.parts.has(ref)) res.parts.set(ref, { ref, raw: '', name: '', groups: [], dest: null, codes: null });
     return res.parts.get(ref);
@@ -224,6 +224,11 @@ export function parseCatalog(pages) {
       if (r && i.h < 12) {
         const L = res.refPages.get(r[1]) || []; if (!L.includes(pg.n)) L.push(pg.n);
         res.refPages.set(r[1], L);
+        // posición de la etiqueta (para emparejarla con su imagen); el número de posición va a su izquierda
+        const num = items.find(j => j !== i && Math.abs(j.y - i.y) < 2 && j.x < i.x && i.x - j.x < 20 && /^\d+\.$/.test(j.s));
+        (res.refPos.get(r[1]) || res.refPos.set(r[1], []).get(r[1])).push({ n: pg.n, x: num ? num.x : i.x, y: i.y });
+        // conjunto que se pide entero: etiqueta en la esquina superior derecha de la lámina
+        if (i.y < 80 && i.x > (pg.w || 792) * 0.7) res.blocks.add(r[1]);
         // texto de la etiqueta de la lámina (debajo de la referencia): sirve para completar nombres cortados en el índice
         if (!res.labels.has(r[1])) {
           const below = items.filter(j => j !== i && Math.abs(j.x - i.x) < 12 && j.y > i.y + 2 && j.y < i.y + 40 && j.h <= i.h + 0.5

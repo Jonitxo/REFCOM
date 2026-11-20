@@ -11,6 +11,7 @@ import { st, save, sIdx } from './store.js';
 import { parseCatalog, effective, guessType, isSmall, supersessions, TYPE_SYSTEM } from './catalog.js';
 import { invGet } from './inv.js';
 import { stockGet } from './stock.js';
+import { compress, putPending, fileName, imgName } from './img.js';
 
 const KEY = 'refcom_pdfcat'; // por catálogo: configuración y piezas marcadas (solo referencias, nunca el PDF)
 const NOTE_TAG = 'Catálogo';
@@ -19,7 +20,7 @@ export const PC = {
   file: null, doc: null, pages: null, cat: null, rows: [], byRef: new Map(),
   busy: '', prog: 0, err: '',
   cfg: null, sel: new Set(), types: new Map(),
-  f: { q: '', u: '', only: false, small: true, na: false, limit: 150 },
+  f: { q: '', u: '', only: false, small: true, na: false, blk: false, limit: 150 },
   last: null // resumen de la última importación
 };
 
@@ -89,8 +90,9 @@ function progress() {
 
 export function closePdf() {
   try { PC.doc?.destroy(); } catch { /* */ }
+  pageMatch.clear();
   Object.assign(PC, { file: null, doc: null, pages: null, cat: null, rows: [], byRef: new Map(), err: '', cfg: null, sel: new Set(), types: new Map(), last: null });
-  PC.f = { q: '', u: '', only: false, small: true, na: false, limit: 150 };
+  PC.f = { q: '', u: '', only: false, small: true, na: false, blk: false, limit: 150 };
 }
 
 /* ---------- filas ---------- */
@@ -123,7 +125,7 @@ function buildRows() {
       units: [...new Set(p.groups.map(x => unitOf(x.g)))],
       dest: e.dest, codes: e.codes, pm: cat.pm.has(p.ref), pmQty: cat.pm.get(p.ref)?.qty || 0,
       type: guessType(p.name), small: isSmall(p.name), olds: oldsOf.get(p.ref) || [], mine: mine.has(nrm(p.ref)),
-      pages: cat.refPages.get(p.ref) || []
+      pages: cat.refPages.get(p.ref) || [], block: cat.blocks.has(p.ref)
     };
   }).sort((a, b) => cmp(a.unit || 'U999', b.unit || 'U999') || cmp(a.group, b.group) || (+a.id || 999) - (+b.id || 999) || cmp(a.ref, b.ref));
   // un destino que cubre todos los del catálogo no es una restricción
@@ -171,7 +173,7 @@ function saveCfg() {
 
 /* ---------- aplicabilidad ---------- */
 
-const preselect = r => r.pm || !!r.type || r.mine;
+const preselect = r => r.pm || !!r.type || r.mine || r.block;
 const activeModels = () => Object.entries(PC.cfg.models).filter(([, m]) => m.on && m.map !== '').map(([code]) => code);
 function appliesTo(r, code, D) {
   const codes = code.split('/');
@@ -213,6 +215,7 @@ export function pdfView() {
     <select data-pcu aria-label="Unidad"><option value="">Todas las unidades</option>${unitsList().map(([u, n, c, s]) => `<option value="${u}" ${PC.f.u === u ? 'selected' : ''}>${esc(u + ' ' + n)} (${s}/${c})</option>`).join('')}</select>
     <div class="filters"><label class="sw"><input type="checkbox" data-pcf="only" ${PC.f.only ? 'checked' : ''}><span>Solo marcadas</span></label>
     <label class="sw"><input type="checkbox" data-pcf="small" ${PC.f.small ? 'checked' : ''}><span>Ocultar piezas menores</span></label>
+    <label class="sw"><input type="checkbox" data-pcf="blk" ${PC.f.blk ? 'checked' : ''}><span>Solo conjuntos</span></label>
     <label class="sw"><input type="checkbox" data-pcf="na" ${PC.f.na ? 'checked' : ''}><span>Ver las que no aplican</span></label></div>
     <div class="acts"><button type="button" class="sm ghost" data-pc="all">Marcar visibles</button><button type="button" class="sm ghost" data-pc="none">Desmarcar visibles</button><button type="button" class="sm ghost" data-pc="pre">Volver a la preselección</button></div></div>`;
   h += `<div id="pcxList">${listHTML()}</div>`;
@@ -242,6 +245,7 @@ function cfgHTML() {
     }).join('') || '<p class="mut small">El catálogo no tiene tabla de modelos.</p>'}</div>
     ${ds.length ? `<div class="fld"><span>Destino (últimas 2 cifras del código de producto de la placa, p. ej. D0CA-<b>27</b>)</span><div class="pcx-d">${ds.map(([d, n]) => `<label class="sw"><input type="checkbox" data-pcd="${esc(d)}" ${c.dest.includes(d) ? 'checked' : ''}><span>${esc(d)} <small class="mut">${n}</small></span></label>`).join('')}</div>
       <p class="mut small">Sin marcar: se importan las variantes de todos los destinos. El catálogo no indica a qué país corresponde cada número; compruébalo en la placa de una máquina.</p></div>` : ''}
+    <label class="sw"><input type="checkbox" data-pcc="img" ${c.img !== false ? 'checked' : ''}><span>Adjuntar la imagen de cada referencia (la miniatura de la lámina; se publica con los datos)</span></label>
   </details>`;
 }
 
@@ -251,6 +255,7 @@ function visible() {
   return PC.rows.filter(r => {
     if (PC.f.u && !r.units.includes(PC.f.u)) return false;
     if (PC.f.only && !PC.sel.has(r.ref)) return false;
+    if (PC.f.blk && !r.block) return false;
     if (PC.f.small && r.small && !PC.sel.has(r.ref)) return false;
     if (!PC.f.na && am.length && !PC.sel.has(r.ref) && !targetsOf(r, am).length) return false;
     if (q && !nrm(r.ref + ' ' + r.name + ' ' + r.gname + ' ' + r.olds.join(' ')).includes(q)) return false;
@@ -261,6 +266,7 @@ function visible() {
 function rowHTML(r) {
   const on = PC.sel.has(r.ref), tg = targetsOf(r), ex = partOf(r.ref), ty = typeOf(r);
   const b = [];
+  if (r.block) b.push('<span class="bd c" title="Se pide el conjunto completo">Conjunto</span>');
   if (r.pm) b.push(`<span class="bd c">PM${r.pmQty > 1 ? ' ×' + r.pmQty : ''}</span>`);
   if (ex) b.push(`<span class="bd ok">ya está</span>`);
   if (r.mine) b.push(`<span class="bd o">en tu inventario</span>`);
@@ -311,7 +317,8 @@ async function showPage(ref, idx = 0) {
   const n = r.pages[idx];
   const { openDialog } = await import('./forms.js');
   openDialog(`${ref} · página ${n}`, `${r.pages.length > 1 ? `<div class="seg scroll">${r.pages.map((p, i) => `<button type="button" class="${i === idx ? 'on' : ''}" data-pg="${i}">Pág. ${p}</button>`).join('')}</div>` : ''}
-    <p class="mut small">${esc(r.name)} · Toca la imagen para ampliar.</p><div class="pcx-pg"><canvas></canvas></div>`, {
+    <div class="pcx-th"><span class="mut small">Buscando la imagen…</span></div>
+    <p class="mut small">${esc(r.name)} · Toca la lámina para ampliar.</p><div class="pcx-pg"><canvas></canvas></div>`, {
     wide: true,
     mount(f) {
       f.addEventListener('click', e => {
@@ -319,6 +326,11 @@ async function showPage(ref, idx = 0) {
         if (e.target.tagName === 'CANVAS') e.target.parentElement.classList.toggle('z');
       });
       draw(f.querySelector('canvas'), n, ref).catch(x => { f.querySelector('.err').textContent = x.message || String(x); });
+      refCanvas(ref).then(c => {
+        const box = f.querySelector('.pcx-th'); if (!box) return;
+        if (!c) { box.innerHTML = '<span class="mut small">No se ha encontrado una imagen propia para esta referencia.</span>'; return; }
+        box.innerHTML = '<span class="mut small">Imagen que se adjunta al importar:</span>'; box.appendChild(c);
+      }).catch(() => { const box = f.querySelector('.pcx-th'); if (box) box.textContent = ''; });
     }
   });
 }
@@ -340,21 +352,119 @@ async function draw(cv, n, ref) {
     ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
     if (!first) first = { x, y };
   });
-  pg.cleanup();
   if (first) {
     const box = cv.parentElement;
     requestAnimationFrame(() => { const k = cv.clientWidth / cv.width; box.scrollTo({ top: Math.max(0, first.y * k - 80), left: Math.max(0, first.x * k - 80) }); });
   }
 }
 
+/* ---------- imágenes de las láminas ---------- */
+// Cada referencia de una lámina lleva su miniatura (imagen propia del PDF) junto a la etiqueta.
+// Se recorren las operaciones de dibujo de la página para saber dónde se pinta cada imagen y se
+// empareja cada etiqueta con la imagen más cercana (una a una, por distancia creciente).
+
+const mulM = (a, b) => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
+const gapOf = (a, b) => Math.hypot(Math.max(0, a.x - (b.x + b.w), b.x - (a.x + a.w)), Math.max(0, a.y - (b.y + b.h), b.y - (a.y + a.h)));
+const pageMatch = new Map(); // nº de página → Map(ref → id de imagen)
+
+async function matchPage(n) {
+  if (pageMatch.has(n)) return pageMatch.get(n);
+  const L = await pdfjs(), O = L.OPS;
+  const pg = await PC.doc.getPage(n), vp = pg.getViewport({ scale: 1 });
+  const ol = await pg.getOperatorList();
+  let ctm = [1, 0, 0, 1, 0, 0]; const stack = [], ims = [];
+  ol.fnArray.forEach((f, i) => {
+    const a = ol.argsArray[i];
+    if (f === O.save) stack.push(ctm);
+    else if (f === O.restore) ctm = stack.pop() || ctm;
+    else if (f === O.transform) ctm = mulM(ctm, a);
+    else if (f === O.paintImageXObject) {
+      const m = mulM(vp.transform, ctm);
+      const P = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+      const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+      const b = { id: a[0], x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+      // fuera: el dibujo de conjunto (grande) y adornos diminutos
+      if (b.w > 15 && b.w < 200 && b.h > 15 && b.h < 200) ims.push(b);
+    }
+  });
+  const labs = [];
+  PC.cat.refPos.forEach((list, ref) => list.forEach(p => { if (p.n === n) labs.push({ ref, x: p.x, y: p.y - 8, w: 62, h: 34 }); }));
+  const pairs = [];
+  labs.forEach(l => ims.forEach(m => { const d = gapOf(l, m); if (d <= 40) pairs.push([d, l, m]); }));
+  pairs.sort((a, b) => a[0] - b[0]);
+  const ul = new Set(), um = new Set(), map = new Map();
+  for (const [, l, m] of pairs) { if (ul.has(l) || um.has(m)) continue; ul.add(l); um.add(m); if (!map.has(l.ref)) map.set(l.ref, m); }
+  const res = { pg, map };
+  pageMatch.set(n, res);
+  return res;
+}
+
+/** Datos de imagen de PDF.js → canvas. */
+function toCanvas(o) {
+  if (!o || !o.width || !o.height) return null;
+  const c = document.createElement('canvas'); c.width = o.width; c.height = o.height;
+  const x = c.getContext('2d');
+  if (o.bitmap) { x.drawImage(o.bitmap, 0, 0); return c; }
+  if (!o.data) return null;
+  const im = x.createImageData(o.width, o.height), d = im.data, s = o.data;
+  if (o.kind === 3) d.set(s.length > d.length ? s.subarray(0, d.length) : s);
+  else if (o.kind === 2) { for (let i = 0, j = 0; i < d.length; i += 4, j += 3) { d[i] = s[j]; d[i + 1] = s[j + 1]; d[i + 2] = s[j + 2]; d[i + 3] = 255; } }
+  else if (o.kind === 1) {
+    const rb = (o.width + 7) >> 3;
+    for (let y = 0; y < o.height; y++) for (let xx = 0; xx < o.width; xx++) { const v = (s[y * rb + (xx >> 3)] >> (7 - (xx & 7))) & 1 ? 255 : 0, i = (y * o.width + xx) * 4; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  } else return null;
+  x.putImageData(im, 0, 0);
+  return c;
+}
+function objOf(pg, id) {
+  const store = id.startsWith('g_') ? pg.commonObjs : pg.objs;
+  return new Promise(ok => {
+    const t = setTimeout(() => ok(null), 4000);
+    try { store.get(id, v => { clearTimeout(t); ok(v); }); } catch { clearTimeout(t); ok(null); }
+  });
+}
+
+/** Imagen de la referencia (canvas) o null. Si sale en varias láminas, se usa la más grande
+ *  (la del conjunto, en la esquina superior derecha, tiene más resolución que la miniatura). */
+async function refCanvas(ref) {
+  const pos = PC.cat.refPos.get(ref) || [], cand = [];
+  for (const n of [...new Set(pos.map(p => p.n))]) {
+    const { pg, map } = await matchPage(n);
+    const m = map.get(ref); if (m) cand.push({ pg, m });
+  }
+  cand.sort((a, b) => b.m.w * b.m.h - a.m.w * a.m.h);
+  for (const { pg, m } of cand) { const c = toCanvas(await objOf(pg, m.id)); if (c) return c; }
+  return null;
+}
+
+/** Adjunta la miniatura a cada pieza (fotos pendientes de publicar, nombre = referencia). */
+async function attachImages(parts, onProg) {
+  let ok = 0, i = 0;
+  for (const p of parts) {
+    onProg(++i / parts.length);
+    try {
+      const c = await refCanvas(p.ref); if (!c) continue;
+      const png = await new Promise(r => c.toBlob(r, 'image/png'));
+      const out = await compress(png, { trim: true });
+      const name = fileName(p.ref, out.ext);
+      await putPending(name, out.blob);
+      p.img = name + '?v=' + Date.now().toString(36);
+      ok++;
+    } catch { /* sin imagen para esta referencia */ }
+  }
+  pageMatch.forEach(({ pg }) => { try { pg.cleanup(); } catch { /* */ } });
+  pageMatch.clear();
+  return ok;
+}
+
 /* ---------- importar ---------- */
 
-function doImport() {
+async function doImport(rerender) {
   const c = PC.cfg, D = c.dest;
   const rows = PC.rows.filter(r => PC.sel.has(r.ref) && targetsOf(r).length);
   if (!rows.length) return;
   const mains = PC.cat.models.filter(m => m.main && c.models[m.code]?.on && c.models[m.code].map !== '');
-  const res = { nuevas: 0, ampliadas: 0, modelos: 0, serie: '', tipos: 0 };
+  const res = { nuevas: 0, ampliadas: 0, modelos: 0, serie: '', tipos: 0, imgs: 0 };
   // serie
   let serie = c.serie === 'new' ? null : st.D.series.find(s => s.id === c.serie);
   if (!serie) {
@@ -379,6 +489,7 @@ function doImport() {
   });
   // piezas
   const byRef = new Map(st.D.parts.map(p => [nrm(p.ref), p]));
+  const withImg = [];
   rows.forEach(r => {
     const t = targetsOf(r).map(code => modelOf[code]).filter(Boolean).map(m => ({ k: 'm', id: m.id }));
     if (!t.length) return;
@@ -390,16 +501,23 @@ function doImport() {
       t.forEach(x => { if (!ex.t.some(y => y.k === x.k && y.id === x.id)) ex.t.push(x); });
       ex.old = [...new Set([...ex.old, ...r.olds.filter(o => nrm(o) !== nrm(ex.ref))])];
       if (!ex.name) ex.name = r.name;
+      if (!imgName(ex)) withImg.push(ex);
       if (!ex.type && type) ex.type = type;
       if (ex.gen) ex.gen = false;
       res.ampliadas++;
     } else {
       const np = { id: uid(), ref: r.ref, type, cl: false, img: '', name: r.name, note, hab: r.pm || !!type, chk: false, gen: false, old: [...r.olds], t };
-      st.D.parts.push(np); byRef.set(nrm(r.ref), np); res.nuevas++;
+      st.D.parts.push(np); byRef.set(nrm(r.ref), np); res.nuevas++; withImg.push(np);
     }
   });
+  if (c.img !== false && withImg.length && PC.doc) {
+    PC.busy = `Extrayendo imágenes (${withImg.length})…`; PC.prog = 0; rerender();
+    let t = 0;
+    res.imgs = await attachImages(withImg, p => { PC.prog = p; const now = Date.now(); if (now - t > 150) { t = now; progress(); } });
+    PC.busy = '';
+  }
   save();
-  PC.last = `Importado en «${esc(serie.name)}»: ${res.nuevas} referencias nuevas, ${res.ampliadas} ya existentes ampliadas${res.modelos ? `, ${res.modelos} modelos creados` : ''}${res.serie ? ', serie creada' : ''}${res.tipos ? `, ${res.tipos} tipos nuevos` : ''}. Se puede deshacer desde «Editar» hasta publicar. <a href="#/s/${encodeURIComponent(serie.name)}">Ver la serie</a>`;
+  PC.last = `Importado en «${esc(serie.name)}»: ${res.nuevas} referencias nuevas, ${res.ampliadas} ya existentes ampliadas${res.modelos ? `, ${res.modelos} modelos creados` : ''}${res.serie ? ', serie creada' : ''}${res.tipos ? `, ${res.tipos} tipos nuevos` : ''}${res.imgs ? `, ${res.imgs} imágenes (se suben al publicar)` : ''}. Se puede deshacer desde «Editar» hasta publicar. <a href="#/s/${encodeURIComponent(serie.name)}">Ver la serie</a>`;
   saveCfg();
   return res;
 }
@@ -420,6 +538,7 @@ export function bindPdf(rerender) {
     if (t.matches('[data-pcm]')) { PC.cfg.models[t.dataset.pcm].on = t.checked; refreshList(true); return; }
     if (t.matches('[data-pcmap]')) { PC.cfg.models[t.dataset.pcmap].map = t.value; refreshList(true); return; }
     if (t.matches('[data-pcd]')) { const d = t.dataset.pcd; PC.cfg.dest = t.checked ? [...new Set([...PC.cfg.dest, d])].sort() : PC.cfg.dest.filter(x => x !== d); refreshList(true); return; }
+    if (t.matches('[data-pcc=img]')) { PC.cfg.img = t.checked; saveCfg(); return; }
     if (t.matches('[data-pcc=serie]')) { PC.cfg.serie = t.value; refreshList(true); return; }
     if (t.matches('[data-pcc=serieName]')) { PC.cfg.serieName = t.value.trim() || PC.cfg.serieName; refreshList(true); }
   });
@@ -442,8 +561,8 @@ export function bindPdf(rerender) {
     else if (a === 'import') {
       const n = PC.rows.filter(r => PC.sel.has(r.ref) && targetsOf(r).length).length;
       if (!confirm(`Se importarán ${n} referencias al borrador. ¿Continuar?`)) return;
-      const res = doImport();
-      if (res) { rerender(); scrollTo(0, 0); toast(`${res.nuevas} nuevas, ${res.ampliadas} ampliadas`); }
+      doImport(rerender).then(res => { if (res) { rerender(); scrollTo(0, 0); toast(`${res.nuevas} nuevas, ${res.ampliadas} ampliadas`); } })
+        .catch(x => { PC.busy = ''; rerender(); alert('Error al importar: ' + (x?.message || x)); });
     }
   });
 }
