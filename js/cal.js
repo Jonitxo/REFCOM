@@ -3,7 +3,7 @@
 // informe en PDF y exportación al calendario del teléfono (.ics).
 // Todo se guarda SOLO en este dispositivo: nunca se publica (repositorio público).
 
-import { $, esc, lsGet, lsSet, toast, download } from './util.js';
+import { esc, lsGet, lsSet, toast, download, askPersist } from './util.js';
 import { Doc, fit, wrap } from './pdfw.js';
 
 const KEY = 'refcom_cal_v1';
@@ -42,7 +42,7 @@ export const calGet = () => (cache ||= sanitize(lsGet(KEY, null)));
 function put(v) {
   cache = v;
   if (!lsSet(KEY, v)) toast('No se ha podido guardar la agenda: almacenamiento lleno');
-  try { navigator.storage?.persist?.(); } catch { /* */ }
+  askPersist();
 }
 
 /* ---------- festivos nacionales ---------- */
@@ -122,7 +122,7 @@ export function calView(ym) {
   let h = `<header class="ph"><h1>Agenda</h1><div class="meta">Personal: se guarda solo en este dispositivo.</div></header>
   <div class="calbar"><a class="btn ghost sm" href="#/agenda/${prev}" aria-label="Mes anterior">‹</a><h2 class="calm">${MONTHS[M - 1]} ${Y}</h2><a class="btn ghost sm" href="#/agenda/${next}" aria-label="Mes siguiente">›</a>${ym !== curYM() ? `<a class="sm ghost btn" href="#/agenda/${curYM()}">Hoy</a>` : ''}</div>
   <div class="seg cmode" role="group" aria-label="Al tocar un día"><button type="button" class="${CS.quick ? '' : 'on'}" data-cq="0" aria-pressed="${!CS.quick}">Tocar: editar día</button><button type="button" class="${CS.quick ? 'on' : ''}" data-cq="1" aria-pressed="${CS.quick}">Tocar: marcar guardia</button></div>
-  <div class="cal" role="grid" aria-label="${MONTHS[M - 1]} ${Y}"><div class="cw" aria-hidden="true"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div><div class="cg">${cells}</div></div>
+  <div class="cal" role="group" aria-label="${MONTHS[M - 1]} ${Y}"><div class="cw" aria-hidden="true"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div><div class="cg">${cells}</div></div>
   <div class="clegend"><span><i class="mk g"></i>Guardia</span><span><i class="mk e"></i>Evento</span><span><i class="mk r"></i>Recordatorio</span><span><i class="hl"></i>Festivo nacional</span></div>`;
   // resumen de guardias
   h += `<section class="blk csum"><h2 class="h">Guardias de ${MONTHS[M - 1]}</h2>
@@ -153,7 +153,7 @@ async function dayDialog(k, rerender) {
   const f = openDialog(`${WD[dt.getDay()]} ${dt.getDate()} de ${MONTHS[dt.getMonth()]}`, `
     ${hol ? `<p class="banner">${esc(hol)} (festivo nacional)</p>` : ''}
     <div class="cchips">${Object.entries(MARKS).map(([m, l]) => `<label class="cchip ${m}"><input type="checkbox" name="${m}" ${x[m] ? 'checked' : ''}><span><i class="mk ${m}"></i>${l}</span></label>`).join('')}</div>
-    <div class="cgh" ${x.g ? '' : 'hidden'}><label class="fld"><span>Inicio</span><input type="time" name="f" value="${g.f}" required></label><label class="fld"><span>Fin</span><input type="time" name="t" value="${g.t}" required></label><p class="mut small chrs"></p></div>
+    <div class="cgh" ${x.g ? '' : 'hidden'}><label class="fld"><span>Inicio</span><input type="time" name="f" value="${g.f}"></label><label class="fld"><span>Fin</span><input type="time" name="t" value="${g.t}"></label><p class="mut small chrs"></p></div>
     <label class="fld"><span>Nota <small class="mut cnc"></small></span><input name="n" maxlength="${NOTE_MAX}" value="${esc(x.n || '')}" placeholder="Máx. ${NOTE_MAX} caracteres" autocomplete="off"></label>
     ${Object.keys(x).length ? `<div class="acts"><a class="sm ghost btn" target="_blank" rel="noopener" href="${esc(gcalUrl(k, x))}">Añadir a Google Calendar</a><button type="button" class="sm ghost" data-ics1>Este día (.ics)</button></div>` : ''}`, {
     submit(f) {

@@ -433,7 +433,10 @@ export function helpView() {
     ${tip('Pedir', '«+ Pedir» la añade a tu lista. En Inventario → Pedir, «Compartir lista» la envía por Teams o correo con referencia, descripción y cantidad.')}
     ${tip('Mis series', 'En Series, «Elegir mis series» muestra solo las que atiendes.')}
     ${tip('Técnico', 'Códigos SC con causas, solución y piezas; y consultas como el acceso a modo SP. Cada modelo muestra al final los suyos.')}
-    ${tip('Excel', 'Abre un Excel compartido y míralo en tarjetas: búsqueda, filtros, teléfonos y «Cómo llegar». No se sube a ningún sitio.')}
+    ${tip('Inventario', 'En «Tengo», «+ Pedir» la añade a Pedir para reponerla y «→ Devolver» pasa una unidad a Devolver. «Recibida» pasa lo pedido a Tengo.')}
+    ${tip('Tóner', 'Stock de seguridad de cada delegación: «Fijar como mi delegación» y «Pedido de reposición» con lo que falta.')}
+    ${tip('Agenda y guardias', 'Toca un día para marcarlo como guardia, evento o recordatorio con una nota corta. «Tocar: marcar guardia» marca varios días seguidos. En «Tarifa y horario» pones tu precio por hora; «Informe PDF» genera el resumen del mes para el jefe. La agenda se guarda solo en tu teléfono: haz «Copia de seguridad» de vez en cuando.')}
+    ${tip('Excel', 'Series → «Abrir un Excel», o compártelo con la app desde Teams o el correo: se ve en tarjetas, con búsqueda, filtros, teléfonos y «Cómo llegar». No se sube a ningún sitio.')}
     ${tip('Stock rule', 'Inventario → Stock rule: marca lo que quitar, cambiar o añadir y genera el Excel con los colores para el jefe de equipo.')}
     ${tip('Sin cobertura', 'La web funciona sin conexión con la última versión cargada. Instálala como app desde el menú del navegador («Añadir a pantalla de inicio»).')}
     ${tip('Algo falta o está mal', '«Avisar de un error» en el modelo o la referencia envía el aviso al responsable con el enlace.')}
