@@ -1,6 +1,6 @@
 // Service worker: la red primero (siempre la versión más reciente) y la caché como respaldo sin conexión.
-const V = 'refcom-v9';
-const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/util.js', 'js/store.js', 'js/github.js', 'js/views.js', 'js/forms.js', 'js/inv.js', 'js/stock.js', 'js/xls.js', 'js/toner.js', 'js/img.js', 'js/vendor/jszip.min.js',
+const V = 'refcom-v10';
+const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/util.js', 'js/store.js', 'js/github.js', 'js/views.js', 'js/forms.js', 'js/inv.js', 'js/stock.js', 'js/xls.js', 'js/toner.js', 'js/img.js', 'js/catalog.js', 'js/pdfcat.js', 'js/vendor/jszip.min.js',
   'data.json', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V && x !== 'refcom-img' && x !== 'refcom-share').map(x => caches.delete(x)))).then(() => self.clients.claim())); });

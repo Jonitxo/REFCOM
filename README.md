@@ -33,6 +33,9 @@ Los datos de versiones anteriores (familia > serie > franja/grupo) se convierten
 | `js/xls.js` | Visor de Excel y vistas por cabeceras. |
 | `js/stock.js` | Importación, edición y exportación del stock rule (.xlsx). |
 | `js/vendor/jszip.min.js` | JSZip 3.10.1 (MIT), para leer y escribir el .xlsx en el navegador. Se carga solo en la pantalla de stock rule. |
+| `js/catalog.js` | Lector de catálogos de piezas Ricoh en PDF: tabla de modelos, unidades, índice de piezas, piezas de mantenimiento, cambios de diseño y aplicabilidad por destino. Funciones puras (se prueban también en Node). |
+| `js/pdfcat.js` | Pantalla «Procesar catálogo PDF»: selección e importación de referencias. |
+| `js/vendor/pdfjs/` | PDF.js 4.10.38 (Apache-2.0, versión *legacy* para navegadores antiguos). Se carga solo al abrir un PDF. |
 | `js/util.js` | Utilidades comunes. |
 | `data.json` | Los datos. Es lo único que cambia al publicar. |
 | `sw.js`, `manifest.webmanifest`, iconos | App instalable y consulta sin conexión. |
@@ -92,7 +95,7 @@ El token no se guarda en ningún servidor: solo en el navegador de quien lo intr
 
 
 1. «Acceso» → `usuario/repositorio` y token. «Recordar en este dispositivo» conserva el token.
-2. Botón «Editar» (barra inferior en móvil, arriba en escritorio): + Pieza, + Varias, + Modelo, + Serie, Importar tabla, Tipos de pieza, Revisión, Exportar, Deshacer (también Ctrl+Z, 40 pasos).
+2. Botón «Editar» (barra inferior en móvil, arriba en escritorio): + Pieza, + Varias, + Modelo, + Serie, Importar tabla, Procesar catálogo PDF, Tipos de pieza, Revisión, Exportar, Deshacer (también Ctrl+Z, 40 pasos).
 3. En cada serie y modelo aparecen «Editar», «+ Modelo» y «+ Pieza» con el destino ya marcado. Al editar una serie se ordena su lista de modelos.
 4. Los cambios quedan como borrador en el navegador («Sin publicar»). «Publicar» muestra el resumen y guarda `data.json` con un commit. GitHub Pages tarda un momento en reflejarlo.
 5. «Revisión» lista incidencias. Referencias duplicadas y tipos inexistentes bloquean la publicación.
@@ -106,6 +109,18 @@ El token no se guarda en ningún servidor: solo en el navegador de quien lo intr
 **Fotos (editor)**: en el formulario de la pieza o del producto, «Hacer o elegir foto» (cámara o galería), pegar con Ctrl+V o arrastrar. Se quitan solos los márgenes uniformes de las capturas; «Recortar a mano» permite arrastrar un recuadro. Al guardar, la foto se comprime en el navegador y se nombra con la referencia (`img/D0E33060.webp`); si cambia la referencia, la foto se renombra. «Fotos en bloque» asigna varias imágenes llamadas como la referencia. Las fotos quedan pendientes en el dispositivo y se suben con «Publicar» en un único commit junto con `data.json`; las que se quitan se borran del repositorio.
 
 Compresión: lado mayor de 640 px como máximo (nunca amplía), WebP con calidad 0,80 y búsqueda de la calidad máxima que cabe en 40 KB (si ni con 0,45 cabe, se reduce el tamaño); JPEG si el navegador no genera WebP. Se respeta la orientación de la cámara y la transparencia pasa a fondo blanco. Parámetros elegidos midiendo tamaño y similitud estructural (SSIM) con fotos de 12 MP y capturas: en WebP la calidad 0,80 es el punto a partir del cual cada mejora visible casi duplica el tamaño. Resultado típico: 5–35 KB por foto (de 1–2 MB originales). Las fotos de iPhone en HEIC se deben hacer desde la propia web o convertir a JPG si el navegador no las abre. Repositorio público: las fotos son visibles para cualquiera con la dirección; no deben aparecer datos de clientes.
+
+**Procesar catálogo PDF (editor)**: «Editar» → «Procesar catálogo PDF» → abrir el catálogo de piezas (PDF con texto seleccionable, formato Ricoh «Parts Catalog»). El PDF se lee en el navegador y **no se sube a ningún sitio**; al repositorio solo llega lo que se importa. Se lee:
+
+- tabla de modelos (Model / Product Code) y unidades (U001 EXTERIOR…);
+- índice «Exclusive Parts»: todas las referencias con nombre, unidad y número en la lámina (se omite la tornillería «Standard Parts»);
+- «PM Part List»: piezas de mantenimiento periódico (marca PM, quedan como habituales);
+- «Design Change List»: pieza antigua → nueva, que se guarda como «Sustituye a» (siguiendo cadenas A→B→C);
+- aplicabilidad: prefijos como `(27/29):` o `(D0C9-19,29):` en el nombre de la pieza o del grupo de la lámina.
+
+Pasos: en «Destino de la importación» se elige la serie (nueva o existente), los modelos del catálogo que se importan (cada uno a un modelo nuevo o existente) y el destino: las 2 últimas cifras del código de producto de la placa (D0CA-**27**). El catálogo no dice a qué país corresponde cada número; se comprueba en la placa. Sin destino marcado se importan todas las variantes. Después se marcan las piezas: vienen preseleccionadas las de mantenimiento, las de tipos conocidos (PCDU, fusor, rodillos de alimentación, ITB, bote residual…) y las que ya están en el inventario o stock rule del dispositivo. Filtros por unidad, búsqueda, «Ocultar piezas menores» (tornillos, muelles, engranajes, chapas…) y «Ver las que no aplican». «Lámina» dibuja la página del catálogo con la referencia resaltada. «Importar» crea serie y modelos si hace falta, asigna cada pieza a los modelos a los que aplica, añade el tipo y la nota (`Catálogo: U012 FUSING`, destino si está restringida) y amplía las referencias que ya existían sin sobrescribir nada. Se puede deshacer hasta publicar. Las piezas marcadas y la configuración se recuerdan en el dispositivo por catálogo (solo referencias, nunca el PDF).
+
+Nombres: se respetan los del catálogo (en inglés). Si el índice corta un nombre a final de página, se completa con la etiqueta de la lámina cuando coincide.
 
 **Correo de avisos**: «Editar» → «Correo de avisos». Se publica en `data.json`, visible para quien abra la web.
 

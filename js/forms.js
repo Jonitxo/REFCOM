@@ -474,6 +474,7 @@ export function editMenu(ctx) {
       <button type="button" data-m="photos">Fotos en bloque</button><button type="button" data-m="contact">Correo de avisos</button>
       <button type="button" class="ok" data-m="pub">${st.mode === 'local' ? 'Descargar data.json' : 'Publicar'}</button><button type="button" data-m="undo" ${st.undo.length ? '' : 'disabled'}>Deshacer</button>
       <button type="button" data-m="rev">Revisión</button><button type="button" data-m="table">Importar tabla</button>
+      <button type="button" data-m="pdf" class="span2">Procesar catálogo PDF</button>
       <button type="button" data-m="types">Tipos de pieza</button><button type="button" data-m="csv">Exportar CSV</button>
       <button type="button" data-m="json">Exportar JSON</button><button type="button" data-m="ijson">Importar JSON</button>
       <button type="button" data-m="discard" ${st.dirty ? '' : 'disabled'}>Descartar cambios</button><button type="button" class="bad" data-m="out">Cerrar sesión</button>
@@ -498,6 +499,7 @@ export function editMenu(ctx) {
         else if (a === 'undo') { if (undo()) { refresh(); toast('Cambio deshecho'); } }
         else if (a === 'rev') go('#/rev');
         else if (a === 'table') tableForm();
+        else if (a === 'pdf') go('#/catalogo');
         else if (a === 'types') typesForm();
         else if (a === 'csv') exportCsv(null, 'referencias.csv');
         else if (a === 'json') download('referencias-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(st.D, null, 1), 'application/json');
