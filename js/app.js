@@ -10,7 +10,7 @@ import { loadPending } from './img.js';
 import { pdfView, bindPdf } from './pdfcat.js';
 import { cleanForm, cleanBulkForm, bulkPhotosForm, sheetToCatalogForm, openDialog, setRefresh, close, editMenu, loginForm, partForm, modelForm, serieForm, exportCsv, mineForm, techForm, techTableForm, exportTechCsv } from './forms.js';
 import { importStock, exportStock, stockClear, stockGet, stockToggleDel, stockQty, stockReset, stockAdd, stockFinal, SF } from './stock.js';
-import { invAdd, invQty, invRemove, invUso, invMove, invClear, invCount, invExport, invImport, invGet } from './inv.js';
+import { invAdd, invQty, invRemove, invUso, invMove, invMoveOne, invClear, invCount, invExport, invImport, invGet } from './inv.js';
 
 const mobile = () => matchMedia('(max-width: 760px)').matches;
 let serieView = lsGet(K.view, '') || (mobile() ? 'models' : 'matrix');
@@ -142,6 +142,7 @@ document.addEventListener('click', e => {
   }
   if ((el = q('[data-iq]'))) { invQty(route.id || 'pedir', el.dataset.ref, +el.dataset.iq); keepScroll(render); return; }
   if ((el = q('[data-iuso]'))) { invUso(el.dataset.iuso); keepScroll(render); return; }
+  if ((el = q('[data-ione]'))) { const [a, b] = el.dataset.ione.split(':'); invMoveOne(a, b, el.dataset.ref); toast(`1 ud de ${el.dataset.ref} → ${{ tengo: 'Tengo', devolver: 'Devolver' }[b]}`, { label: 'Ver lista', href: '#/inv/' + b }); keepScroll(render); return; }
   if ((el = q('[data-imove]'))) { const [a, b] = el.dataset.imove.split(':'); invMove(a, b, el.dataset.ref); toast(el.dataset.ref + ' pasa a Tengo'); keepScroll(render); return; }
   if ((el = q('[data-idel]'))) { invRemove(el.dataset.idel, el.dataset.ref); keepScroll(render); return; }
   if ((el = q('[data-tq]'))) { TN.changeQty(el.dataset.d, el.dataset.i, +el.dataset.tq); keepScroll(render); return; }

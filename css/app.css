@@ -210,6 +210,8 @@ main:focus{outline:none}
 .inv{display:grid;gap:8px;margin-top:10px}
 .ii{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
 .ii-i .ref{font-size:20px;margin-left:-6px}
+.ii-t{display:flex;gap:10px;align-items:center}
+.ii-t .ii-i{flex:1;min-width:0}
 .ii-a{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .ii-a .x{margin-left:auto}
 .uso.hab{background:var(--ok);border-color:var(--ok);color:#fff}
