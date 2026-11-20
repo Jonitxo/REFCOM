@@ -4,7 +4,8 @@
 //   types:  [{name, system, channel:'K'|'C'|'M'|'Y'|'', common:bool, alias:[name]}]
 //   series: [{id, name, category, despiece, models:[modelId]}]   (orden manual)
 //   models: [{id, name, codes:[], platform, franja, despiece}]
-//   parts:  [{id, ref, type, name, note, hab, chk, gen, old:[ref], t:[{k:'s'|'m', id}]}]
+//   parts:  [{id, ref, type, name, note, hab, chk, gen, cl, img, old:[ref], t:[{k:'s'|'m', id}]}]
+//           cl: producto de limpieza. img: foto en img/ («REF.webp?v=…»).
 //           old: referencias anteriores a las que sustituye esta pieza.
 //   tech:   [{id, kind:'sc'|'guia', code, title, causes, steps, note, refs:[ref], t:[...] }]
 //           Códigos SC y consultas técnicas. t vacío = aplica a todos los equipos.
@@ -94,9 +95,13 @@ function sanitize(d) {
   const okT = t => (Array.isArray(t) ? t : []).filter(x => x && ((x.k === 'm' && mids.has(x.id)) || (x.k === 's' && sids.has(x.id))));
   d.parts = d.parts.filter(p => p && p.id && s(p.ref)).map(p => ({
     id: String(p.id), ref: s(p.ref), type: s(p.type), name: s(p.name), note: s(p.note),
-    hab: p.hab !== false, chk: !!p.chk, gen: !!p.gen,
+    hab: p.hab !== false, chk: !!p.chk, gen: !!p.gen && !p.cl,
+    // producto de limpieza: apartado propio, sin modelos
+    cl: !!p.cl,
+    // foto: «ARCHIVO.webp?v=…» dentro de img/ (solo nombres seguros)
+    img: /^[A-Za-z0-9._-]+\.(webp|jpg)(\?v=[a-z0-9]+)?$/.test(s(p.img)) ? s(p.img) : '',
     old: (Array.isArray(p.old) ? p.old : []).map(cleanRef).filter(Boolean),
-    t: okT(p.t)
+    t: p.cl ? [] : okT(p.t)
   }));
   d.tech = (Array.isArray(d.tech) ? d.tech : []).filter(x => x && x.id && (s(x.title) || s(x.code))).map(x => ({
     id: String(x.id), kind: x.kind === 'sc' ? 'sc' : 'guia', code: s(x.code).toUpperCase(), title: s(x.title),

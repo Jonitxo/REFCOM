@@ -2,6 +2,7 @@
 
 import { st, K, VERSION, migrate, emptyData, resetUndo, persist, readDraft } from './store.js';
 import { lsDel } from './util.js';
+import { allPending, delPending, imgName } from './img.js';
 
 const API = 'https://api.github.com';
 
@@ -88,6 +89,7 @@ export async function login(repo, token, remember, silent) {
     if (!r.ok) throw fail('Error de GitHub (' + r.status + ')');
     const j = await r.json();
     if (j.permissions && !j.permissions.push) throw fail('El token no tiene permiso de escritura en este repositorio', true);
+    st.branch = j.default_branch || 'main';
     const rem = await remote();
     const base = rem.data || emptyData();
     st.pubStr = JSON.stringify(base);
@@ -148,8 +150,79 @@ export function diffLines(a, b) {
 }
 
 /** Publica data.json. Devuelve 'ok' o 'conflict'; lanza Error con mensaje para otros fallos. */
+/** Fotos que hay que subir (pendientes y referenciadas) y borrar (ya no referenciadas por ninguna pieza). */
+export async function photoChanges() {
+  const now = new Set(st.D.parts.map(imgName).filter(Boolean));
+  const before = new Set((JSON.parse(st.pubStr || '{"parts":[]}').parts || []).map(imgName).filter(Boolean));
+  let pend = [];
+  try { pend = await allPending(); } catch { /* sin IndexedDB */ }
+  return { up: pend.filter(x => now.has(x.name)), del: [...before].filter(n => !now.has(n)), orphan: pend.filter(x => !now.has(x.name)).map(x => x.name) };
+}
+
+async function blobB64(blob) {
+  const b = new Uint8Array(await blob.arrayBuffer()); let bin = '';
+  for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+/**
+ * Publicación con fotos: un solo commit con data.json, las fotos nuevas (img/) y el borrado de las retiradas,
+ * mediante la API de datos de Git. El conflicto se detecta como en la publicación simple.
+ */
+async function publishTree(message, up, del) {
+  const R = `/repos/${st.repo}`, br = st.branch || 'main';
+  const call = async (path, o) => {
+    let r;
+    try { r = await gh(R + path, o); } catch { throw new Error('No se pudo conectar con GitHub. Los cambios siguen guardados como borrador en este navegador.'); }
+    if (r.status === 401 || r.status === 403) throw new Error('GitHub rechazó la publicación (' + r.status + '): el token no es válido o no tiene permiso Contents: Read and write.');
+    return r;
+  };
+  const ref = await call(`/git/ref/heads/${encodeURIComponent(br)}`);
+  if (!ref.ok) throw new Error('No se pudo leer la rama ' + br + ' (' + ref.status + ')');
+  const head = (await ref.json()).object.sha;
+  const cm = await (await call(`/git/commits/${head}`)).json();
+  // conflicto: data.json ha cambiado desde que se empezó a editar
+  const cur = await call(`/contents/data.json?ref=${encodeURIComponent(br)}`, { cache: 'no-store' });
+  const curSha = cur.status === 404 ? null : cur.ok ? (await cur.json()).sha : undefined;
+  if (curSha === undefined) throw new Error('No se pudo comprobar data.json (' + cur.status + ')');
+  if (curSha !== (st.baseSha || null)) return 'conflict';
+  // fotos que existen en el repositorio (para no borrar rutas inexistentes)
+  let existing = new Set();
+  if (del.length) {
+    const l = await call(`/contents/img?ref=${encodeURIComponent(br)}`, { cache: 'no-store' });
+    if (l.ok) existing = new Set((await l.json()).map(x => x.name));
+  }
+  const mk = async (content, encoding) => {
+    const r = await call('/git/blobs', { method: 'POST', body: JSON.stringify({ content, encoding }) });
+    if (!r.ok) throw new Error('Error al subir un archivo (' + r.status + ')');
+    return (await r.json()).sha;
+  };
+  const tree = [];
+  for (const x of up) tree.push({ path: 'img/' + x.name, mode: '100644', type: 'blob', sha: await mk(await blobB64(x.blob), 'base64') });
+  del.filter(n => existing.has(n)).forEach(n => tree.push({ path: 'img/' + n, mode: '100644', type: 'blob', sha: null }));
+  const dataSha = await mk(b64(JSON.stringify(st.D, null, 1)), 'base64');
+  tree.push({ path: 'data.json', mode: '100644', type: 'blob', sha: dataSha });
+  const t = await call('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: cm.tree.sha, tree }) });
+  if (!t.ok) throw new Error('Error al preparar la publicación (' + t.status + ')');
+  const c = await call('/git/commits', { method: 'POST', body: JSON.stringify({ message, tree: (await t.json()).sha, parents: [head] }) });
+  if (!c.ok) throw new Error('Error al crear la publicación (' + c.status + ')');
+  const u = await call(`/git/refs/heads/${encodeURIComponent(br)}`, { method: 'PATCH', body: JSON.stringify({ sha: (await c.json()).sha, force: false }) });
+  if (u.status === 422 || u.status === 409) return 'conflict'; // la rama avanzó mientras tanto
+  if (!u.ok) throw new Error('Error al publicar (' + u.status + ')');
+  return { sha: dataSha };
+}
+
 export async function publish(message) {
   st.D.version = VERSION; st.D.updated = new Date().toISOString();
+  const ph = await photoChanges();
+  if (ph.up.length || ph.del.length) {
+    const r = await publishTree(message || 'Actualización de referencias', ph.up, ph.del);
+    if (r === 'conflict') return 'conflict';
+    st.baseSha = r.sha;
+    try { await delPending([...ph.up.map(x => x.name), ...ph.orphan]); } catch { /* */ }
+    st.pubStr = JSON.stringify(st.D); st.snap = st.pubStr; st.undo = []; persist();
+    return 'ok';
+  }
   const body = { message: message || 'Actualización de referencias', content: b64(JSON.stringify(st.D, null, 1)) };
   if (st.baseSha) body.sha = st.baseSha;
   let r;
@@ -160,11 +233,13 @@ export async function publish(message) {
   if (!r.ok) throw new Error('Error al publicar (' + r.status + ')');
   const j = await r.json();
   st.baseSha = j.content && j.content.sha;
+  if (ph.orphan.length) { try { await delPending(ph.orphan); } catch { /* */ } }
   st.pubStr = JSON.stringify(st.D); st.snap = st.pubStr; st.undo = []; persist();
   return 'ok';
 }
 
 export async function discard() {
+  try { const { clearPending } = await import('./img.js'); await clearPending(); } catch { /* */ }
   if (st.mode === 'gh') { const rem = await remote(); st.D = rem.data || emptyData(); st.baseSha = rem.sha; }
   else await loadPublished();
   st.pubStr = JSON.stringify(st.D); resetUndo(); persist();
@@ -172,5 +247,5 @@ export async function discard() {
 
 export const historyUrl = () => {
   const repo = st.repo || savedRepo();
-  return /^[\w.-]+\/[\w.-]+$/.test(repo) ? `https://github.com/${repo}/commits/main/data.json` : '';
+  return /^[\w.-]+\/[\w.-]+$/.test(repo) ? `https://github.com/${repo}/commits/${st.branch || 'main'}/data.json` : '';
 };
