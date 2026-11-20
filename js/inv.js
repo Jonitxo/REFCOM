@@ -47,6 +47,16 @@ export function invMove(from, to, ref) {
   if (t) t.qty += it.qty; else v[to].unshift({ ref: it.ref, qty: it.qty, uso: '' });
   put(v);
 }
+/** Pasa una unidad de una lista a otra (p. ej. tengo → devolver); si era la última, sale de la lista de origen. */
+export function invMoveOne(from, to, ref) {
+  const v = invGet(), it = find(v[from], ref); if (!it) return 0;
+  it.qty -= 1;
+  if (it.qty < 1) v[from] = v[from].filter(x => x !== it);
+  const t = find(v[to], ref);
+  if (t) t.qty += 1; else v[to].unshift({ ref: it.ref, qty: 1, uso: to === 'tengo' ? it.uso || '' : '' });
+  put(v);
+  return it.qty;
+}
 export function invClear(list) { const v = invGet(); v[list] = []; put(v); }
 export const invQtyOf = (list, ref) => find(invGet()[list], ref)?.qty || 0;
 export const invCount = list => invGet()[list].length;
